@@ -1,40 +1,35 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2004 Sam Lantinga
+    Copyright (C) 1997-2006 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
+    modify it under the terms of the GNU Lesser General Public
     License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
+    version 2.1 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Library General Public
-    License along with this library; if not, write to the Free
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
+#include "SDL_config.h"
 
-#ifdef SAVE_RCSID
-static char rcsid =
- "@(#) $Id$";
-#endif
-
-#include <stdlib.h>
-#include <stdio.h>
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "SDL_main.h"
 #include "SDL_events.h"
-#include "SDL_error.h"
 #include "SDL_syswm.h"
-#include "SDL_sysevents.h"
-#include "SDL_events_c.h"
-#include "SDL_lowvideo.h"
+#include "../../events/SDL_sysevents.h"
+#include "../../events/SDL_events_c.h"
+#include "../wincommon/SDL_lowvideo.h"
 #include "SDL_dibvideo.h"
 #include "SDL_vkeys.h"
 
@@ -48,8 +43,7 @@ static char rcsid =
 
 /* The translation table from a Microsoft VK keysym to a SDL keysym */
 static SDLKey VK_keymap[SDLK_LAST];
-static SDL_keysym *TranslateKey(UINT vkey, UINT scancode, SDL_keysym *keysym, int pressed);
-static BOOL prev_shiftstates[2];
+static SDL_keysym *TranslateKey(WPARAM vkey, UINT scancode, SDL_keysym *keysym, int pressed);
 
 /* Masks for processing the windows KEYDOWN and KEYUP messages */
 #define REPEATED_KEYMASK	(1<<30)
@@ -57,11 +51,40 @@ static BOOL prev_shiftstates[2];
 
 /* DJM: If the user setup the window for us, we want to save his window proc,
    and give him a chance to handle some messages. */
-static WNDPROC userWindowProc = NULL;
+#ifdef STRICT
+#define WNDPROCTYPE	WNDPROC
+#else
+#define WNDPROCTYPE	FARPROC
+#endif
+static WNDPROCTYPE userWindowProc = NULL;
+
+
+#ifdef _WIN32_WCE
+
+WPARAM rotateKey(WPARAM key,SDL_ScreenOrientation direction) 
+{
+	if (direction != SDL_ORIENTATION_LEFT)
+		return key;
+
+	switch (key) {
+		case 0x26: /* up */
+			return 0x27;
+		case 0x27: /* right */
+			return 0x28;
+		case 0x28: /* down */
+			return 0x25;
+		case 0x25: /* left */
+			return 0x26;
+	}
+
+	return key;
+}
+
+#endif 
+
 
 /* The main Win32 event handler */
-LONG
- DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	extern int posted;
 
@@ -70,6 +93,15 @@ LONG
 		case WM_KEYDOWN: {
 			SDL_keysym keysym;
 
+#ifdef _WIN32_WCE
+			// Drop GAPI artefacts
+			if (wParam == 0x84 || wParam == 0x5B)
+				return 0;
+
+			// Rotate key if necessary
+			if (this->hidden->orientation != SDL_ORIENTATION_UP)
+				wParam = rotateKey(wParam, this->hidden->orientation);	
+#endif 
 			/* Ignore repeated keys */
 			if ( lParam&REPEATED_KEYMASK ) {
 				return(0);
@@ -83,14 +115,16 @@ LONG
 					break;
 				case VK_SHIFT:
 					/* EXTENDED trick doesn't work here */
-					if (!prev_shiftstates[0] && (GetKeyState(VK_LSHIFT) & 0x8000)) {
+					{
+					Uint8 *state = SDL_GetKeyState(NULL);
+					if (state[SDLK_LSHIFT] == SDL_RELEASED && (GetKeyState(VK_LSHIFT) & 0x8000)) {
 						wParam = VK_LSHIFT;
-						prev_shiftstates[0] = TRUE;
-					} else if (!prev_shiftstates[1] && (GetKeyState(VK_RSHIFT) & 0x8000)) {
+					} else if (state[SDLK_RSHIFT] == SDL_RELEASED && (GetKeyState(VK_RSHIFT) & 0x8000)) {
 						wParam = VK_RSHIFT;
-						prev_shiftstates[1] = TRUE;
 					} else {
-						/* Huh? */
+						/* Probably a key repeat */
+						return(0);
+					}
 					}
 					break;
 				case VK_MENU:
@@ -113,8 +147,6 @@ LONG
 				if ( TranslateMessage(&m) && PeekMessage(&m, hwnd, 0, WM_USER, PM_NOREMOVE) && (m.message == WM_CHAR) ) {
 					GetMessage(&m, hwnd, 0, WM_USER);
 			    		wParam = m.wParam;
-				} else {
-					wParam = 0;
 				}
 			}
 #endif /* NO_GETKEYBOARDSTATE */
@@ -127,6 +159,16 @@ LONG
 		case WM_KEYUP: {
 			SDL_keysym keysym;
 
+#ifdef _WIN32_WCE
+			// Drop GAPI artifacts
+			if (wParam == 0x84 || wParam == 0x5B)
+				return 0;
+
+			// Rotate key if necessary
+			if (this->hidden->orientation != SDL_ORIENTATION_UP)
+				wParam = rotateKey(wParam, this->hidden->orientation);	
+#endif
+
 			switch (wParam) {
 				case VK_CONTROL:
 					if ( lParam&EXTENDED_KEYMASK )
@@ -136,14 +178,16 @@ LONG
 					break;
 				case VK_SHIFT:
 					/* EXTENDED trick doesn't work here */
-					if (prev_shiftstates[0] && !(GetKeyState(VK_LSHIFT) & 0x8000)) {
+					{
+					Uint8 *state = SDL_GetKeyState(NULL);
+					if (state[SDLK_LSHIFT] == SDL_PRESSED && !(GetKeyState(VK_LSHIFT) & 0x8000)) {
 						wParam = VK_LSHIFT;
-						prev_shiftstates[0] = FALSE;
-					} else if (prev_shiftstates[1] && !(GetKeyState(VK_RSHIFT) & 0x8000)) {
+					} else if (state[SDLK_RSHIFT] == SDL_PRESSED && !(GetKeyState(VK_RSHIFT) & 0x8000)) {
 						wParam = VK_RSHIFT;
-						prev_shiftstates[1] = FALSE;
 					} else {
-						/* Huh? */
+						/* Probably a key repeat */
+						return(0);
+					}
 					}
 					break;
 				case VK_MENU:
@@ -152,6 +196,11 @@ LONG
 					else
 						wParam = VK_LMENU;
 					break;
+			}
+			/* Windows only reports keyup for print screen */
+			if ( wParam == VK_SNAPSHOT && SDL_GetKeyState(NULL)[SDLK_PRINT] == SDL_RELEASED ) {
+				posted = SDL_PrivateKeyboard(SDL_PRESSED,
+					TranslateKey(wParam,HIWORD(lParam),&keysym,1));
 			}
 			posted = SDL_PrivateKeyboard(SDL_RELEASED,
 				TranslateKey(wParam,HIWORD(lParam),&keysym,0));
@@ -208,7 +257,7 @@ void DIB_InitOSKeymap(_THIS)
 	int i;
 
 	/* Map the VK keysyms */
-	for ( i=0; i<SDL_TABLESIZE(VK_keymap); ++i )
+	for ( i=0; i<SDL_arraysize(VK_keymap); ++i )
 		VK_keymap[i] = SDLK_UNKNOWN;
 
 	VK_keymap[VK_BACK] = SDLK_BACKSPACE;
@@ -237,6 +286,7 @@ void DIB_InitOSKeymap(_THIS)
 	VK_keymap[VK_EQUALS] = SDLK_EQUALS;
 	VK_keymap[VK_LBRACKET] = SDLK_LEFTBRACKET;
 	VK_keymap[VK_BACKSLASH] = SDLK_BACKSLASH;
+	VK_keymap[VK_OEM_102] = SDLK_LESS;
 	VK_keymap[VK_RBRACKET] = SDLK_RIGHTBRACKET;
 	VK_keymap[VK_GRAVE] = SDLK_BACKQUOTE;
 	VK_keymap[VK_BACKTICK] = SDLK_BACKQUOTE;
@@ -329,29 +379,27 @@ void DIB_InitOSKeymap(_THIS)
 	VK_keymap[VK_SNAPSHOT] = SDLK_PRINT;
 	VK_keymap[VK_CANCEL] = SDLK_BREAK;
 	VK_keymap[VK_APPS] = SDLK_MENU;
-
-	prev_shiftstates[0] = FALSE;
-	prev_shiftstates[1] = FALSE;
 }
 
-static SDL_keysym *TranslateKey(UINT vkey, UINT scancode, SDL_keysym *keysym, int pressed)
+static SDL_keysym *TranslateKey(WPARAM vkey, UINT scancode, SDL_keysym *keysym, int pressed)
 {
 	/* Set the keysym information */
 	keysym->scancode = (unsigned char) scancode;
 	keysym->sym = VK_keymap[vkey];
 	keysym->mod = KMOD_NONE;
 	keysym->unicode = 0;
-	if ( pressed && SDL_TranslateUNICODE ) { /* Someday use ToUnicode() */
+	if ( pressed && SDL_TranslateUNICODE ) {
 #ifdef NO_GETKEYBOARDSTATE
 		/* Uh oh, better hope the vkey is close enough.. */
 		keysym->unicode = vkey;
 #else
-		BYTE keystate[256];
-		BYTE chars[2];
+		BYTE	keystate[256];
+		Uint16	wchars[2];
 
 		GetKeyboardState(keystate);
-		if ( ToAscii(vkey,scancode,keystate,(WORD *)chars,0) == 1 ) {
-			keysym->unicode = chars[0];
+		if (SDL_ToUnicode((UINT)vkey, scancode, keystate, wchars, sizeof(wchars)/sizeof(wchars[0]), 0) == 1)
+		{
+			keysym->unicode = wchars[0];
 		}
 #endif /* NO_GETKEYBOARDSTATE */
 	}
@@ -360,12 +408,21 @@ static SDL_keysym *TranslateKey(UINT vkey, UINT scancode, SDL_keysym *keysym, in
 
 int DIB_CreateWindow(_THIS)
 {
-#ifndef CS_BYTEALIGNCLIENT
-#define CS_BYTEALIGNCLIENT	0
-#endif
-	SDL_RegisterApp("SDL_app", CS_BYTEALIGNCLIENT, 0);
+	char *windowid = SDL_getenv("SDL_WINDOWID");
+
+	SDL_RegisterApp(NULL, 0, 0);
+
+	SDL_windowid = (windowid != NULL);
 	if ( SDL_windowid ) {
-		SDL_Window = (HWND)strtol(SDL_windowid, NULL, 0);
+#if defined(_WIN32_WCE) && (_WIN32_WCE < 300)
+		/* wince 2.1 does not have strtol */
+		wchar_t *windowid_t = SDL_malloc((SDL_strlen(windowid) + 1) * sizeof(wchar_t));
+		MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, windowid, -1, windowid_t, SDL_strlen(windowid) + 1);
+		SDL_Window = (HWND)wcstol(windowid_t, NULL, 0);
+		SDL_free(windowid_t);
+#else
+		SDL_Window = (HWND)SDL_strtoull(windowid, NULL, 0);
+#endif
 		if ( SDL_Window == NULL ) {
 			SDL_SetError("Couldn't get user specified window");
 			return(-1);
@@ -374,8 +431,8 @@ int DIB_CreateWindow(_THIS)
 		/* DJM: we want all event's for the user specified
 			window to be handled by SDL.
 		 */
-		userWindowProc = (WNDPROC)GetWindowLong(SDL_Window, GWL_WNDPROC);
-		SetWindowLong(SDL_Window, GWL_WNDPROC, (LONG)WinMessage);
+		userWindowProc = (WNDPROCTYPE)GetWindowLongPtr(SDL_Window, GWLP_WNDPROC);
+		SetWindowLongPtr(SDL_Window, GWLP_WNDPROC, (LONG_PTR)WinMessage);
 	} else {
 		SDL_Window = CreateWindow(SDL_Appname, SDL_Appname,
                         (WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX),
@@ -386,14 +443,28 @@ int DIB_CreateWindow(_THIS)
 		}
 		ShowWindow(SDL_Window, SW_HIDE);
 	}
+
+	/* JC 14 Mar 2006
+		Flush the message loop or this can cause big problems later
+		Especially if the user decides to use dialog boxes or assert()!
+	*/
+	WIN_FlushMessageQueue();
+
 	return(0);
 }
 
 void DIB_DestroyWindow(_THIS)
 {
 	if ( SDL_windowid ) {
-		SetWindowLong(SDL_Window, GWL_WNDPROC, (LONG)userWindowProc);
+		SetWindowLongPtr(SDL_Window, GWLP_WNDPROC, (LONG_PTR)userWindowProc);
 	} else {
 		DestroyWindow(SDL_Window);
 	}
+	SDL_UnregisterApp();
+
+	/* JC 14 Mar 2006
+		Flush the message loop or this can cause big problems later
+		Especially if the user decides to use dialog boxes or assert()!
+	*/
+	WIN_FlushMessageQueue();
 }

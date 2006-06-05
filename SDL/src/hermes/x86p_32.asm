@@ -24,9 +24,8 @@ GLOBAL _ConvertX86p32_16BGR555
 GLOBAL _ConvertX86p32_8RGB332
 
 EXTERN _x86return
-		
+	
 SECTION .text
-
 
 ;; _Convert_*
 ;; Paramters:	
@@ -1041,3 +1040,7 @@ _ConvertX86p32_8RGB332:
 	
 .L4:	
 	jmp _x86return
+
+%ifidn __OUTPUT_FORMAT__,elf
+section .note.GNU-stack noalloc noexec nowrite progbits
+%endif

@@ -1,31 +1,25 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2004 Sam Lantinga
+    Copyright (C) 1997-2006 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
+    modify it under the terms of the GNU Lesser General Public
     License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
+    version 2.1 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Library General Public
-    License along with this library; if not, write to the Free
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-
-#ifdef SAVE_RCSID
-static char rcsid =
- "@(#) $Id$";
-#endif
-
-#ifndef DISABLE_FILE
+#include "SDL_config.h"
 
 /* 
    Code to load and save surfaces in Windows BMP format.
@@ -39,9 +33,6 @@ static char rcsid =
    This code currently supports Win32 DIBs in uncompressed 8 and 24 bpp.
 */
 
-#include <string.h>
-
-#include "SDL_error.h"
 #include "SDL_video.h"
 #include "SDL_endian.h"
 
@@ -104,7 +95,7 @@ SDL_Surface * SDL_LoadBMP_RW (SDL_RWops *src, int freesrc)
 		was_error = 1;
 		goto done;
 	}
-	if ( strncmp(magic, "BM", 2) != 0 ) {
+	if ( SDL_strncmp(magic, "BM", 2) != 0 ) {
 		SDL_SetError("File is not a Windows BMP file");
 		was_error = 1;
 		goto done;
@@ -141,7 +132,7 @@ SDL_Surface * SDL_LoadBMP_RW (SDL_RWops *src, int freesrc)
 	}
 
 	/* Check for read error */
-	if ( strcmp(SDL_GetError(), "") != 0 ) {
+	if ( SDL_strcmp(SDL_GetError(), "") != 0 ) {
 		was_error = 1;
 		goto done;
 	}
@@ -243,7 +234,7 @@ SDL_Surface * SDL_LoadBMP_RW (SDL_RWops *src, int freesrc)
 	}
 
 	/* Read the surface pixels.  Note that the bmp image is upside down */
-	if ( SDL_RWseek(src, fp_offset+bfOffBits, SEEK_SET) < 0 ) {
+	if ( SDL_RWseek(src, fp_offset+bfOffBits, RW_SEEK_SET) < 0 ) {
 		SDL_Error(SDL_EFSEEK);
 		was_error = 1;
 		goto done;
@@ -323,6 +314,9 @@ SDL_Surface * SDL_LoadBMP_RW (SDL_RWops *src, int freesrc)
 	}
 done:
 	if ( was_error ) {
+		if ( src ) {
+			SDL_RWseek(src, fp_offset, RW_SEEK_SET);
+		}
 		if ( surface ) {
 			SDL_FreeSurface(surface);
 		}
@@ -477,11 +471,11 @@ int SDL_SaveBMP_RW (SDL_Surface *saveme, SDL_RWops *dst, int freedst)
 
 		/* Write the bitmap offset */
 		bfOffBits = SDL_RWtell(dst)-fp_offset;
-		if ( SDL_RWseek(dst, fp_offset+10, SEEK_SET) < 0 ) {
+		if ( SDL_RWseek(dst, fp_offset+10, RW_SEEK_SET) < 0 ) {
 			SDL_Error(SDL_EFSEEK);
 		}
 		SDL_WriteLE32(dst, bfOffBits);
-		if ( SDL_RWseek(dst, fp_offset+bfOffBits, SEEK_SET) < 0 ) {
+		if ( SDL_RWseek(dst, fp_offset+bfOffBits, RW_SEEK_SET) < 0 ) {
 			SDL_Error(SDL_EFSEEK);
 		}
 
@@ -504,11 +498,11 @@ int SDL_SaveBMP_RW (SDL_Surface *saveme, SDL_RWops *dst, int freedst)
 
 		/* Write the BMP file size */
 		bfSize = SDL_RWtell(dst)-fp_offset;
-		if ( SDL_RWseek(dst, fp_offset+2, SEEK_SET) < 0 ) {
+		if ( SDL_RWseek(dst, fp_offset+2, RW_SEEK_SET) < 0 ) {
 			SDL_Error(SDL_EFSEEK);
 		}
 		SDL_WriteLE32(dst, bfSize);
-		if ( SDL_RWseek(dst, fp_offset+bfSize, SEEK_SET) < 0 ) {
+		if ( SDL_RWseek(dst, fp_offset+bfSize, RW_SEEK_SET) < 0 ) {
 			SDL_Error(SDL_EFSEEK);
 		}
 
@@ -522,7 +516,5 @@ int SDL_SaveBMP_RW (SDL_Surface *saveme, SDL_RWops *dst, int freedst)
 	if ( freedst && dst ) {
 		SDL_RWclose(dst);
 	}
-	return((strcmp(SDL_GetError(), "") == 0) ? 0 : -1);
+	return((SDL_strcmp(SDL_GetError(), "") == 0) ? 0 : -1);
 }
-
-#endif /* ENABLE_FILE */

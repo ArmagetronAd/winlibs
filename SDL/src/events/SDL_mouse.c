@@ -1,45 +1,37 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2004 Sam Lantinga
+    Copyright (C) 1997-2006 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
+    modify it under the terms of the GNU Lesser General Public
     License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
+    version 2.1 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Library General Public
-    License along with this library; if not, write to the Free
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-
-#ifdef SAVE_RCSID
-static char rcsid =
- "@(#) $Id$";
-#endif
+#include "SDL_config.h"
 
 /* General mouse handling code for SDL */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "SDL_events.h"
 #include "SDL_events_c.h"
-#include "SDL_cursor_c.h"
-#include "SDL_sysvideo.h"
+#include "../video/SDL_cursor_c.h"
+#include "../video/SDL_sysvideo.h"
 
 
 /* These are static for our mouse handling code */
-static Sint16 SDL_MouseX = -1;
-static Sint16 SDL_MouseY = -1;
+static Sint16 SDL_MouseX = 0;
+static Sint16 SDL_MouseY = 0;
 static Sint16 SDL_DeltaX = 0;
 static Sint16 SDL_DeltaY = 0;
 static Uint8  SDL_ButtonState = 0;
@@ -49,8 +41,8 @@ static Uint8  SDL_ButtonState = 0;
 int SDL_MouseInit(void)
 {
 	/* The mouse is at (0,0) */
-	SDL_MouseX = -1;
-	SDL_MouseY = -1;
+	SDL_MouseX = 0;
+	SDL_MouseY = 0;
 	SDL_DeltaX = 0;
 	SDL_DeltaY = 0;
 	SDL_ButtonState = 0;
@@ -76,18 +68,10 @@ void SDL_ResetMouse(void)
 Uint8 SDL_GetMouseState (int *x, int *y)
 {
 	if ( x ) {
-		if ( SDL_MouseX < 0 ) {
-			*x = 0;
-		} else {
-			*x = SDL_MouseX;
-		}
+		*x = SDL_MouseX;
 	}
 	if ( y ) {
-		if ( SDL_MouseY < 0 ) {
-			*y = 0;
-		} else {
-			*y = SDL_MouseY;
-		}
+		*y = SDL_MouseY;
 	}
 	return(SDL_ButtonState);
 }
@@ -165,9 +149,17 @@ int SDL_PrivateMouseMotion(Uint8 buttonstate, int relative, Sint16 x, Sint16 y)
 	   This prevents lots of extraneous large delta relative motion when
 	   the screen is windowed mode and the mouse is outside the window.
 	*/
-	if ( ! relative && SDL_MouseX >= 0 && SDL_MouseY >= 0 ) {
+	if ( ! relative ) {
 		Xrel = X-SDL_MouseX;
 		Yrel = Y-SDL_MouseY;
+	}
+
+	/* Drop events that don't change state */
+	if ( ! Xrel && ! Yrel ) {
+#if 0
+printf("Mouse event didn't change state - dropped!\n");
+#endif
+		return(0);
 	}
 
 	/* Update internal mouse state */
@@ -176,13 +168,13 @@ int SDL_PrivateMouseMotion(Uint8 buttonstate, int relative, Sint16 x, Sint16 y)
 	SDL_MouseY = Y;
 	SDL_DeltaX += Xrel;
 	SDL_DeltaY += Yrel;
-	SDL_MoveCursor(SDL_MouseX, SDL_MouseY);
+        SDL_MoveCursor(SDL_MouseX, SDL_MouseY);
 
 	/* Post the event, if desired */
 	posted = 0;
 	if ( SDL_ProcessEvents[SDL_MOUSEMOTION] == SDL_ENABLE ) {
 		SDL_Event event;
-		memset(&event, 0, sizeof(event));
+		SDL_memset(&event, 0, sizeof(event));
 		event.type = SDL_MOUSEMOTION;
 		event.motion.state = buttonstate;
 		event.motion.x = X;
@@ -204,7 +196,7 @@ int SDL_PrivateMouseButton(Uint8 state, Uint8 button, Sint16 x, Sint16 y)
 	int move_mouse;
 	Uint8 buttonstate;
 
-	memset(&event, 0, sizeof(event));
+	SDL_memset(&event, 0, sizeof(event));
 
 	/* Check parameters */
 	if ( x || y ) {

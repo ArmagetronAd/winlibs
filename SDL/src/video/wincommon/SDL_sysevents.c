@@ -1,53 +1,52 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997, 1998, 1999  Sam Lantinga
+    Copyright (C) 1997-2006 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
+    modify it under the terms of the GNU Lesser General Public
     License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
+    version 2.1 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Library General Public
-    License along with this library; if not, write to the Free
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
+#include "SDL_config.h"
 
-#ifdef SAVE_RCSID
-static char rcsid =
- "@(#) $Id$";
-#endif
-
-#include <stdlib.h>
-#include <stdio.h>
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#include "SDL_getenv.h"
 #include "SDL_events.h"
 #include "SDL_video.h"
-#include "SDL_error.h"
 #include "SDL_syswm.h"
-#include "SDL_sysevents.h"
-#include "SDL_events_c.h"
-#include "SDL_sysvideo.h"
+#include "../SDL_sysvideo.h"
+#include "../../events/SDL_sysevents.h"
+#include "../../events/SDL_events_c.h"
 #include "SDL_lowvideo.h"
 #include "SDL_syswm_c.h"
 #include "SDL_main.h"
+#include "SDL_loadso.h"
 
 #ifdef WMMSG_DEBUG
 #include "wmmsg.h"
 #endif
 
 #ifdef _WIN32_WCE
+#include "../gapi/SDL_gapivideo.h"
+
+#define IsZoomed(HWND) 1
 #define NO_GETKEYBOARDSTATE
+#if _WIN32_WCE < 420
 #define NO_CHANGEDISPLAYSETTINGS
+#endif
 #endif
 
 /* The window we use for everything... */
@@ -56,6 +55,7 @@ LPWSTR SDL_Appname = NULL;
 #else
 LPSTR SDL_Appname = NULL;
 #endif
+Uint32 SDL_Appstyle = 0;
 HINSTANCE SDL_Instance = NULL;
 HWND SDL_Window = NULL;
 RECT SDL_bounds = {0, 0, 0, 0};
@@ -65,32 +65,168 @@ int SDL_resizing = 0;
 int mouse_relative = 0;
 int posted = 0;
 #ifndef NO_CHANGEDISPLAYSETTINGS
+DEVMODE SDL_desktop_mode;
 DEVMODE SDL_fullscreen_mode;
 #endif
 WORD *gamma_saved = NULL;
 
 
 /* Functions called by the message processing function */
-LONG
-(*HandleMessage)(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)=NULL;
+LONG (*HandleMessage)(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)=NULL;
 void (*WIN_RealizePalette)(_THIS);
 void (*WIN_PaletteChanged)(_THIS, HWND window);
 void (*WIN_WinPAINT)(_THIS, HDC hdc);
 extern void DIB_SwapGamma(_THIS);
 
+#ifndef NO_GETKEYBOARDSTATE
+/* Variables and support functions for SDL_ToUnicode() */
+static int codepage;
+static int Is9xME();
+static int GetCodePage();
+static int WINAPI ToUnicode9xME(UINT vkey, UINT scancode, BYTE *keystate, LPWSTR wchars, int wsize, UINT flags);
+
+ToUnicodeFN SDL_ToUnicode = ToUnicode9xME;
+#endif /* !NO_GETKEYBOARDSTATE */
+
+
+#if defined(_WIN32_WCE)
+
+// dynamically load aygshell dll because we want SDL to work on HPC and be300
+HINSTANCE aygshell = NULL;
+BOOL (WINAPI *SHFullScreen)(HWND hwndRequester, DWORD dwState) = 0;
+
+#define SHFS_SHOWTASKBAR            0x0001
+#define SHFS_HIDETASKBAR            0x0002
+#define SHFS_SHOWSIPBUTTON          0x0004
+#define SHFS_HIDESIPBUTTON          0x0008
+#define SHFS_SHOWSTARTICON          0x0010
+#define SHFS_HIDESTARTICON          0x0020
+
+static void LoadAygshell(void)
+{
+	if( !aygshell )
+		 aygshell = SDL_LoadObject("aygshell.dll");
+	if( (aygshell != 0) && (SHFullScreen == 0) )
+	{
+		SHFullScreen = (int (WINAPI *)(struct HWND__ *,unsigned long)) SDL_LoadFunction(aygshell, "SHFullScreen");
+	}
+}
+
+/* for gapi landscape mode */
+static void GapiTransform(SDL_ScreenOrientation rotate, char hires, Sint16 *x, Sint16 *y) {
+	Sint16 rotatedX;
+	Sint16 rotatedY;
+
+	if (hires) {
+		*x = *x * 2;
+		*y = *y * 2;
+	}
+
+	switch(rotate) {
+		case SDL_ORIENTATION_UP:
+			{
+/* this code needs testing on a real device!
+   So it will be enabled later */
+/*
+#ifdef _WIN32_WCE
+#if _WIN32_WCE >= 420
+				// test device orientation
+				// FIXME: do not check every mouse message
+				DEVMODE settings;
+				SDL_memset(&settings, 0, sizeof(DEVMODE));
+				settings.dmSize = sizeof(DEVMODE);
+				settings.dmFields = DM_DISPLAYORIENTATION;
+				ChangeDisplaySettingsEx(NULL, &settings, NULL, CDS_TEST, NULL);
+				if( settings.dmOrientation == DMDO_90 )
+				{
+					rotatedX = SDL_VideoSurface->h - *x;
+					rotatedY = *y;
+					*x = rotatedX;
+					*y = rotatedY;
+				}
+#endif
+#endif */
+			}
+			break;
+		case SDL_ORIENTATION_RIGHT:
+			if (!SDL_VideoSurface)
+				break;
+			rotatedX = SDL_VideoSurface->w - *y;
+			rotatedY = *x;
+			*x = rotatedX;
+			*y = rotatedY;
+			break;
+		case SDL_ORIENTATION_LEFT:
+			if (!SDL_VideoSurface)
+				break;
+			rotatedX = *y;
+			rotatedY = SDL_VideoSurface->h - *x;
+			*x = rotatedX;
+			*y = rotatedY;
+			break;
+	}
+}
+
+#endif
+
+/* JC 14 Mar 2006
+   This is used all over the place, in the windib driver and in the dx5 driver
+   So we may as well stick it here instead of having multiple copies scattered
+   about
+*/
+void WIN_FlushMessageQueue()
+{
+	MSG  msg;
+	while ( PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) ) {
+		if ( msg.message == WM_QUIT ) break;
+		TranslateMessage( &msg );
+		DispatchMessage( &msg );
+	}
+}
+
 static void SDL_RestoreGameMode(void)
 {
-#ifndef NO_CHANGEDISPLAYSETTINGS
+#ifdef _WIN32_WCE
+	SDL_VideoDevice *this = current_video;
+	if(SDL_strcmp(this->name, "gapi") == 0)
+	{
+		if( this->hidden->suspended )
+		{
+			this->hidden->suspended = 0;
+		}
+	}
+#else
 	ShowWindow(SDL_Window, SW_RESTORE);
+#endif
+
+#ifndef NO_CHANGEDISPLAYSETTINGS
+#ifndef _WIN32_WCE
 	ChangeDisplaySettings(&SDL_fullscreen_mode, CDS_FULLSCREEN);
 #endif
+#endif /* NO_CHANGEDISPLAYSETTINGS */
 }
 static void SDL_RestoreDesktopMode(void)
 {
-#ifndef NO_CHANGEDISPLAYSETTINGS
+
+#ifdef _WIN32_WCE
+	SDL_VideoDevice *this = current_video;
+	if(SDL_strcmp(this->name, "gapi") == 0)
+	{
+		if( !this->hidden->suspended )
+		{
+			this->hidden->suspended = 1;
+		}
+	}
+#else
+	/* WinCE does not have a taskbar, so minimizing is not convenient */
 	ShowWindow(SDL_Window, SW_MINIMIZE);
+#endif
+
+#ifndef NO_CHANGEDISPLAYSETTINGS
+#ifndef _WIN32_WCE
 	ChangeDisplaySettings(NULL, 0);
 #endif
+#endif /* NO_CHANGEDISPLAYSETTINGS */
 }
 
 #ifdef WM_MOUSELEAVE
@@ -127,7 +263,7 @@ static BOOL WINAPI WIN_TrackMouseEvent(TRACKMOUSEEVENT *ptme)
 {
 	if ( ptme->dwFlags == TME_LEAVE ) {
 		return SetTimer(ptme->hwndTrack, ptme->dwFlags, 100,
-		                (TIMERPROC)TrackMouseTimerProc);
+		                (TIMERPROC)TrackMouseTimerProc) != 0;
 	}
 	return FALSE;
 }
@@ -145,21 +281,27 @@ static void WIN_GetKeyboardState(void)
 	if ( GetKeyboardState(keyboard) ) {
 		if ( keyboard[VK_LSHIFT] & 0x80) {
 			state |= KMOD_LSHIFT;
+			kstate[SDLK_LSHIFT] = SDL_PRESSED;
 		}
 		if ( keyboard[VK_RSHIFT] & 0x80) {
 			state |= KMOD_RSHIFT;
+			kstate[SDLK_RSHIFT] = SDL_PRESSED;
 		}
 		if ( keyboard[VK_LCONTROL] & 0x80) {
 			state |= KMOD_LCTRL;
+			kstate[SDLK_LCTRL] = SDL_PRESSED;
 		}
 		if ( keyboard[VK_RCONTROL] & 0x80) {
 			state |= KMOD_RCTRL;
+			kstate[SDLK_RCTRL] = SDL_PRESSED;
 		}
 		if ( keyboard[VK_LMENU] & 0x80) {
 			state |= KMOD_LALT;
+			kstate[SDLK_LALT] = SDL_PRESSED;
 		}
 		if ( keyboard[VK_RMENU] & 0x80) {
 			state |= KMOD_RALT;
+			kstate[SDLK_RALT] = SDL_PRESSED;
 		}
 		if ( keyboard[VK_NUMLOCK] & 0x01) {
 			state |= KMOD_NUM;
@@ -177,7 +319,7 @@ static void WIN_GetKeyboardState(void)
 /* The main Win32 event handler
 DJM: This is no longer static as (DX5/DIB)_CreateWindow needs it
 */
-LONG CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	SDL_VideoDevice *this = current_video;
 	static int mouse_pressed = 0;
@@ -213,6 +355,18 @@ LONG CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						SDL_RestoreGameMode();
 					}
 				}
+#if defined(_WIN32_WCE)
+			if ( WINDIB_FULLSCREEN() )
+			{
+						LoadAygshell();
+						if( SHFullScreen )
+							SHFullScreen(SDL_Window, SHFS_HIDESTARTICON|SHFS_HIDETASKBAR|SHFS_HIDESIPBUTTON);
+						else
+							ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_HIDE);
+
+			}
+#endif
+
 				posted = SDL_PrivateAppActive(1, appstate);
 				WIN_GetKeyboardState();
 			} else {
@@ -230,6 +384,14 @@ LONG CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 					if ( WINDIB_FULLSCREEN() ) {
 						SDL_RestoreDesktopMode();
+#if defined(_WIN32_WCE)
+						LoadAygshell();
+						if( SHFullScreen ) 
+							SHFullScreen(SDL_Window, SHFS_SHOWSTARTICON|SHFS_SHOWTASKBAR|SHFS_SHOWSIPBUTTON);
+						else
+							ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_SHOW);
+
+#endif
 					}
 				}
 				posted = SDL_PrivateAppActive(0, appstate);
@@ -274,6 +436,10 @@ LONG CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						posted = SDL_PrivateMouseMotion(0, 1, x, y);
 					}
 				} else {
+#ifdef _WIN32_WCE
+					if (SDL_VideoSurface)
+						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
+#endif
 					posted = SDL_PrivateMouseMotion(0, 0, x, y);
 				}
 			}
@@ -362,6 +528,10 @@ LONG CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				} else {
 					x = (Sint16)LOWORD(lParam);
 					y = (Sint16)HIWORD(lParam);
+#ifdef _WIN32_WCE
+					if (SDL_VideoSurface)
+						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
+#endif
 				}
 				posted = SDL_PrivateMouseButton(
 							state, button, x, y);
@@ -464,7 +634,9 @@ LONG CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			GetClientRect(SDL_Window, &SDL_bounds);
 			ClientToScreen(SDL_Window, (LPPOINT)&SDL_bounds);
 			ClientToScreen(SDL_Window, (LPPOINT)&SDL_bounds+1);
-			if ( SDL_bounds.left || SDL_bounds.top ) {
+			if ( !SDL_resizing && !IsZoomed(SDL_Window) &&
+			     SDL_PublicSurface &&
+				!(SDL_PublicSurface->flags & SDL_FULLSCREEN) ) {
 				SDL_windowX = SDL_bounds.left;
 				SDL_windowY = SDL_bounds.top;
 			}
@@ -536,6 +708,13 @@ LONG CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		return(0);
 
+#ifndef NO_GETKEYBOARDSTATE
+		case WM_INPUTLANGCHANGE: {
+			codepage = GetCodePage();
+		}
+		return(TRUE);
+#endif
+
 		default: {
 			/* Special handling by the video driver */
 			if (HandleMessage) {
@@ -562,64 +741,61 @@ void *SDL_GetModuleHandle(void)
 	if ( SDL_handle ) {
 		handle = SDL_handle;
 	} else {
-		/* Warning:
-		   If SDL is built as a DLL, this will return a handle to
-		   the DLL, not the application, and DirectInput may fail
-		   to initialize.
-		 */
 		handle = GetModuleHandle(NULL);
 	}
 	return(handle);
 }
 
 /* This allows the SDL_WINDOWID hack */
-const char *SDL_windowid = NULL;
+BOOL SDL_windowid = FALSE;
+
+static int app_registered = 0;
 
 /* Register the class for this application -- exported for winmain.c */
 int SDL_RegisterApp(char *name, Uint32 style, void *hInst)
 {
-	static int initialized = 0;
 	WNDCLASS class;
 #ifdef WM_MOUSELEAVE
 	HMODULE handle;
 #endif
 
 	/* Only do this once... */
-	if ( initialized ) {
+	if ( app_registered ) {
+		++app_registered;
 		return(0);
 	}
 
-	/* This function needs to be passed the correct process handle
-	   by the application.
-	 */
-	if ( ! hInst ) {
-		hInst = SDL_GetModuleHandle();
+#ifndef CS_BYTEALIGNCLIENT
+#define CS_BYTEALIGNCLIENT	0
+#endif
+	if ( ! name && ! SDL_Appname ) {
+		name = "SDL_app";
+		SDL_Appstyle = CS_BYTEALIGNCLIENT;
+		SDL_Instance = hInst ? hInst : SDL_GetModuleHandle();
+	}
+
+	if ( name ) {
+#ifdef _WIN32_WCE
+		/* WinCE uses the UNICODE version */
+		SDL_Appname = SDL_iconv_utf8_ucs2(name);
+#else
+		SDL_Appname = SDL_iconv_utf8_latin1(name);
+#endif /* _WIN32_WCE */
+		SDL_Appstyle = style;
+		SDL_Instance = hInst ? hInst : SDL_GetModuleHandle();
 	}
 
 	/* Register the application class */
 	class.hCursor		= NULL;
-#ifdef _WIN32_WCE
-	{
-		/* WinCE uses the UNICODE version */
-		int nLen = strlen(name)+1;
-		SDL_Appname = malloc(nLen*2);
-		MultiByteToWideChar(CP_ACP, 0, name, -1, SDL_Appname, nLen);
-	}
-#else
-	{
-		int nLen = strlen(name)+1;
-		SDL_Appname = malloc(nLen);
-		strcpy(SDL_Appname, name);
-	}
-#endif /* _WIN32_WCE */
-	class.hIcon		= LoadImage(hInst, SDL_Appname, IMAGE_ICON,
+	class.hIcon		= LoadImage(SDL_Instance, SDL_Appname,
+				            IMAGE_ICON,
 	                                    0, 0, LR_DEFAULTCOLOR);
 	class.lpszMenuName	= NULL;
 	class.lpszClassName	= SDL_Appname;
 	class.hbrBackground	= NULL;
-	class.hInstance		= hInst;
-	class.style		= style;
-#ifdef HAVE_OPENGL
+	class.hInstance		= SDL_Instance;
+	class.style		= SDL_Appstyle;
+#if SDL_VIDEO_OPENGL
 	class.style		|= CS_OWNDC;
 #endif
 	class.lpfnWndProc	= WinMessage;
@@ -629,7 +805,6 @@ int SDL_RegisterApp(char *name, Uint32 style, void *hInst)
 		SDL_SetError("Couldn't register application class");
 		return(-1);
 	}
-	SDL_Instance = hInst;
 
 #ifdef WM_MOUSELEAVE
 	/* Get the version of TrackMouseEvent() we use */
@@ -643,10 +818,71 @@ int SDL_RegisterApp(char *name, Uint32 style, void *hInst)
 	}
 #endif /* WM_MOUSELEAVE */
 
-	/* Check for SDL_WINDOWID hack */
-	SDL_windowid = getenv("SDL_WINDOWID");
+#ifndef NO_GETKEYBOARDSTATE
+	/* Initialise variables for SDL_ToUnicode() */
+	codepage = GetCodePage();
+	SDL_ToUnicode = Is9xME() ? ToUnicode9xME : ToUnicode;
+#endif
 
-	initialized = 1;
+	app_registered = 1;
 	return(0);
 }
 
+/* Unregisters the windowclass registered in SDL_RegisterApp above. */
+void SDL_UnregisterApp()
+{
+	WNDCLASS class;
+
+	/* SDL_RegisterApp might not have been called before */
+	if ( !app_registered ) {
+		return;
+	}
+	--app_registered;
+	if ( app_registered == 0 ) {
+		/* Check for any registered window classes. */
+		if ( GetClassInfo(SDL_Instance, SDL_Appname, &class) ) {
+			UnregisterClass(SDL_Appname, SDL_Instance);
+		}
+		SDL_free(SDL_Appname);
+		SDL_Appname = NULL;
+	}
+}
+
+#ifndef NO_GETKEYBOARDSTATE
+/* JFP: Implementation of ToUnicode() that works on 9x/ME/2K/XP */
+
+static int Is9xME()
+{
+	OSVERSIONINFO   info;
+
+	SDL_memset(&info, 0, sizeof(info));
+	info.dwOSVersionInfoSize = sizeof(info);
+	if (!GetVersionEx(&info)) {
+		return 0;
+	}
+	return (info.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS);
+}
+
+static int GetCodePage()
+{
+	char	buff[8];
+	int	lcid = MAKELCID(LOWORD(GetKeyboardLayout(0)), SORT_DEFAULT);
+	int	cp = GetACP();
+
+	if (GetLocaleInfo(lcid, LOCALE_IDEFAULTANSICODEPAGE, buff, sizeof(buff))) {
+		cp = SDL_atoi(buff);
+	}
+	return cp;
+}
+
+static int WINAPI ToUnicode9xME(UINT vkey, UINT scancode, PBYTE keystate, LPWSTR wchars, int wsize, UINT flags)
+{
+	BYTE	chars[2];
+
+	if (ToAsciiEx(vkey, scancode, keystate, (WORD*)chars, 0, GetKeyboardLayout(0)) == 1) {
+		return MultiByteToWideChar(codepage, 0, chars, 1, wchars, wsize);
+	}
+	return 0;
+}
+
+#endif /* !NO_GETKEYBOARDSTATE */

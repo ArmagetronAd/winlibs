@@ -1,29 +1,25 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2004 Sam Lantinga
+    Copyright (C) 1997-2006 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
+    modify it under the terms of the GNU Lesser General Public
     License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
+    version 2.1 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Library General Public
-    License along with this library; if not, write to the Free
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-
-#ifdef SAVE_RCSID
-static char rcsid =
- "@(#) $Id$";
-#endif
+#include "SDL_config.h"
 
 /* This a stretch blit implementation based on ideas given to me by
    Tomasz Cejner - thanks! :)
@@ -31,7 +27,6 @@ static char rcsid =
    April 27, 2000 - Sam Lantinga
 */
 
-#include "SDL_error.h"
 #include "SDL_video.h"
 #include "SDL_blit.h"
 
@@ -39,15 +34,15 @@ static char rcsid =
    into the general blitting mechanism.
 */
 
-#if (defined(WIN32) && !defined(_M_ALPHA) && !defined(_WIN32_WCE) && \
-     !defined(__WATCOMC__) && !defined(__LCC__) && !defined(__FREEBCC__)) || \
-    (defined(i386) && defined(__GNUC__) && defined(USE_ASMBLIT))
+#if ((defined(_MFC_VER) && defined(_M_IX86)/* && !defined(_WIN32_WCE) still needed? */) || \
+     defined(__WATCOMC__) || \
+     (defined(__GNUC__) && defined(__i386__))) && SDL_ASSEMBLY_ROUTINES
 #define USE_ASM_STRETCH
 #endif
 
 #ifdef USE_ASM_STRETCH
 
-#if defined(WIN32) || defined(i386)
+#if defined(_M_IX86) || defined(i386)
 #define PREFIX16	0x66
 #define STORE_BYTE	0xAA
 #define STORE_WORD	0xAB
@@ -58,9 +53,6 @@ static char rcsid =
 #error Need assembly opcodes for this architecture
 #endif
 
-#if defined(__ELF__) && defined(__GNUC__)
-extern unsigned char _copy_row[4096] __attribute__ ((alias ("copy_row")));
-#endif
 static unsigned char copy_row[4096];
 
 static int generate_rowbytes(int src_w, int dst_w, int bpp)
@@ -78,7 +70,7 @@ static int generate_rowbytes(int src_w, int dst_w, int bpp)
 
 	/* See if we need to regenerate the copy buffer */
 	if ( (src_w == last.src_w) &&
-	     (dst_w == last.src_w) && (bpp == last.bpp) ) {
+	     (dst_w == last.dst_w) && (bpp == last.bpp) ) {
 		return(0);
 	}
 	last.bpp = bpp;
@@ -286,13 +278,12 @@ int SDL_SoftStretch(SDL_Surface *src, SDL_Rect *srcrect,
 		    default:
 #ifdef __GNUC__
 			__asm__ __volatile__ (
-			"call _copy_row"
+			"call *%4"
 			: "=&D" (u1), "=&S" (u2)
-			: "0" (dstp), "1" (srcp)
+			: "0" (dstp), "1" (srcp), "r" (copy_row)
 			: "memory" );
-#else
-#ifdef WIN32
-		{ void *code = &copy_row;
+#elif defined(_MSC_VER) || defined(__WATCOMC__)
+		{ void *code = copy_row;
 			__asm {
 				push edi
 				push esi
@@ -308,7 +299,6 @@ int SDL_SoftStretch(SDL_Surface *src, SDL_Rect *srcrect,
 #else
 #error Need inline assembly for this compiler
 #endif
-#endif /* __GNUC__ */
 			break;
 		}
 #else
