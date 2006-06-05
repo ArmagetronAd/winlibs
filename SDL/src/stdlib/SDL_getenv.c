@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2006 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -25,7 +25,7 @@
 
 #ifndef HAVE_GETENV
 
-#if defined(__WIN32__) && !defined(_WIN32_WCE) && !defined(__SYMBIAN32__)
+#if defined(__WIN32__) && !defined(_WIN32_WCE)
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
