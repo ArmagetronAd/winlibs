@@ -1,26 +1,24 @@
 /*
     SDL_image:  An example image loading library for use with SDL
-    Copyright (C) 1999-2004 Sam Lantinga
+    Copyright (C) 1997-2006 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
+    modify it under the terms of the GNU Lesser General Public
     License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
+    version 2.1 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Library General Public
-    License along with this library; if not, write to the Free
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-
-/* $Id$ */
 
 /* This is a ILBM image file loading framework
    Load IFF pictures, PBM & ILBM packing methods, with or without stencil
@@ -63,11 +61,13 @@ typedef struct
 
 int IMG_isLBM( SDL_RWops *src )
 {
+	int start;
 	int   is_LBM;
 	Uint8 magic[4+4+4];
 
+	start = SDL_RWtell(src);
 	is_LBM = 0;
-	if ( SDL_RWread( src, magic, 4+4+4, 1 ) )
+	if ( SDL_RWread( src, magic, sizeof(magic), 1 ) )
 	{
 		if ( !memcmp( magic, "FORM", 4 ) &&
 			( !memcmp( magic + 8, "PBM ", 4 ) ||
@@ -76,11 +76,13 @@ int IMG_isLBM( SDL_RWops *src )
 			is_LBM = 1;
 		}
 	}
+	SDL_RWseek(src, start, SEEK_SET);
 	return( is_LBM );
 }
 
 SDL_Surface *IMG_LoadLBM_RW( SDL_RWops *src )
 {
+	int start;
 	SDL_Surface *Image;
 	Uint8       id[4], pbm, colormap[MAXCOLORS*3], *MiniBuf, *ptr, count, color, msk;
 	Uint32      size, bytesloaded, nbcolors;
@@ -99,6 +101,8 @@ SDL_Surface *IMG_LoadLBM_RW( SDL_RWops *src )
 		/* The error message has been set in SDL_RWFromFile */
 		return NULL;
 	}
+	start = SDL_RWtell(src);
+
 	if ( !SDL_RWread( src, id, 4, 1 ) )
 	{
 		error="error reading IFF chunk";
@@ -442,15 +446,15 @@ SDL_Surface *IMG_LoadLBM_RW( SDL_RWops *src )
 						}
 						if ( SDL_BYTEORDER == SDL_LIL_ENDIAN )
 						{
-							*ptr++ = finalcolor>>16;
-							*ptr++ = finalcolor>>8;
-							*ptr++ = finalcolor;
+							*ptr++ = (Uint8)(finalcolor>>16);
+							*ptr++ = (Uint8)(finalcolor>>8);
+							*ptr++ = (Uint8)(finalcolor);
 						}
 						else
 						{
-							*ptr++ = finalcolor;
-							*ptr++ = finalcolor>>8;
-							*ptr++ = finalcolor>>16;
+							*ptr++ = (Uint8)(finalcolor);
+							*ptr++ = (Uint8)(finalcolor>>8);
+							*ptr++ = (Uint8)(finalcolor>>16);
 						}
 
 						maskBit = maskBit>>1;
@@ -466,9 +470,12 @@ done:
 
 	if ( error )
 	{
+		SDL_RWseek(src, start, SEEK_SET);
+		if ( Image ) {
+			SDL_FreeSurface( Image );
+			Image = NULL;
+		}
 		IMG_SetError( error );
-		SDL_FreeSurface( Image );
-		Image = NULL;
 	}
 
 	return( Image );
