@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 #include "SDL_endian.h"
 #include "SDL_audio.h"
 #include "SDL_timer.h"
@@ -56,10 +57,8 @@
 #    define UNIMOD			MODULE
 #    define MikMod_Init()		MikMod_Init(NULL)
 #    define MikMod_LoadSong(a,b)	Player_Load(a,b,0)
-#    ifdef USE_RWOPS
-#      ifndef LIBMIKMOD_MUSIC
-#      define MikMod_LoadSongRW(a,b)	Player_LoadRW(a,b,0)
-#    endif
+#    ifndef LIBMIKMOD_MUSIC
+#    define MikMod_LoadSongRW(a,b)	Player_LoadRW(a,b,0)
 #    endif
 #    define MikMod_FreeSong		Player_Free
      extern int MikMod_errno;
@@ -85,7 +84,7 @@
 #include "music_ogg.h"
 #endif
 #ifdef MP3_MUSIC
-#include "smpeg.h"
+#include "dynamic_mp3.h"
 
 static SDL_AudioSpec used_mixer;
 #endif
@@ -168,6 +167,36 @@ void Mix_HookMusicFinished(void (*music_finished)(void))
 }
 
 
+/* If music isn't playing, halt it if no looping is required, restart it */
+/* otherwhise. NOP if the music is playing */
+static int music_halt_or_loop (void)
+{
+	/* Restart music if it has to loop */
+	
+	if (!music_internal_playing()) 
+	{
+		/* Restart music if it has to loop at a high level */
+		if (music_loops && --music_loops)
+		{
+			Mix_Fading current_fade = music_playing->fading;
+			music_internal_play(music_playing, 0.0);
+			music_playing->fading = current_fade;
+		} 
+		else 
+		{
+			music_internal_halt();
+			if (music_finished_hook)
+				music_finished_hook();
+			
+			return 0;
+		}
+	}
+	
+	return 1;
+}
+
+
+
 /* Mixing function */
 void music_mixer(void *udata, Uint8 *stream, int len)
 {
@@ -196,21 +225,11 @@ void music_mixer(void *udata, Uint8 *stream, int len)
 				music_playing->fading = MIX_NO_FADING;
 			}
 		}
-		/* Restart music if it has to loop */
-		if ( !music_internal_playing() ) {
-			/* Restart music if it has to loop at a high level */
-			if ( music_loops && --music_loops ) {
-				Mix_Fading current_fade = music_playing->fading;
-				music_internal_play(music_playing, 0.0);
-				music_playing->fading = current_fade;
-			} else {
-				music_internal_halt();
-				if ( music_finished_hook ) {
-					music_finished_hook();
-				}
-				return;
-			}
-		}
+		
+		if (music_halt_or_loop() == 0)
+			return;
+		
+		
 		switch (music_playing->type) {
 #ifdef CMD_MUSIC
 			case MUS_CMD:
@@ -310,12 +329,16 @@ void music_mixer(void *udata, Uint8 *stream, int len)
 #endif
 #ifdef OGG_MUSIC
 			case MUS_OGG:
-				OGG_playAudio(music_playing->data.ogg, stream, len);
+				
+				len = OGG_playAudio(music_playing->data.ogg, stream, len);
+				if (len > 0 && music_halt_or_loop())
+					OGG_playAudio(music_playing->data.ogg, stream, len);
+			
 				break;
 #endif
 #ifdef MP3_MUSIC
 			case MUS_MP3:
-				SMPEG_playAudio(music_playing->data.mp3, stream, len);
+				smpeg.SMPEG_playAudio(music_playing->data.mp3, stream, len);
 				break;
 #endif
 			default:
@@ -329,6 +352,9 @@ void music_mixer(void *udata, Uint8 *stream, int len)
 int open_music(SDL_AudioSpec *mixer)
 {
 	int music_error;
+#ifdef LIBMIKMOD_MUSIC
+	CHAR *list;
+#endif
 
 	music_error = 0;
 #ifdef WAV_MUSIC
@@ -379,22 +405,26 @@ int open_music(SDL_AudioSpec *mixer)
 		}
 		md_mode |= DMODE_STEREO;
 	}
-	md_mixfreq	 = mixer->freq;
-	md_device	  = 0;
-	md_volume	  = 96;
+	md_mixfreq = mixer->freq;
+	md_device  = 0;
+	md_volume  = 96;
 	md_musicvolume = 128;
 	md_sndfxvolume = 128;
-	md_pansep	  = 128;
-	md_reverb	  = 0;
+	md_pansep  = 128;
+	md_reverb  = 0;
+	md_mode    |= DMODE_HQMIXER|DMODE_SOFT_MUSIC|DMODE_SURROUND;
 #ifdef LIBMIKMOD_MUSIC
-	md_mode |= DMODE_HQMIXER|DMODE_SOFT_MUSIC|DMODE_SURROUND;
+	list = MikMod_InfoDriver();
+	if ( list )
+	  free(list);
+	else
 #endif
+	MikMod_RegisterDriver(&drv_nos);
 #ifdef LIBMIKMOD_MUSIC
-	if(!MikMod_InfoDriver())
-#endif
-	MikMod_RegisterAllDrivers();
-#ifdef LIBMIKMOD_MUSIC
-	if(!MikMod_InfoLoader())
+	list = MikMod_InfoLoader();
+	if ( list )
+	  free(list);
+	else
 #endif
 	MikMod_RegisterAllLoaders();
 	if ( MikMod_Init() ) {
@@ -562,15 +592,19 @@ Mix_Music *Mix_LoadMUS(const char *file)
 	if ( (ext && MIX_string_equals(ext, "MPG")) ||
 	     (ext && MIX_string_equals(ext, "MP3")) ||
 	     (ext && MIX_string_equals(ext, "MPEG")) ||
-	     magic[0]==0xFF && (magic[1]&0xF0)==0xF0) {
-		SMPEG_Info info;
-		music->type = MUS_MP3;
-		music->data.mp3 = SMPEG_new(file, &info, 0);
-		if(!info.has_audio){
-			Mix_SetError("MPEG file does not have any audio stream.");
+	     (magic[0] == 0xFF && (magic[1] & 0xF0) == 0xF0) ) {
+		if ( Mix_InitMP3() == 0 ) {
+			SMPEG_Info info;
+			music->type = MUS_MP3;
+			music->data.mp3 = smpeg.SMPEG_new(file, &info, 0);
+			if ( !info.has_audio ) {
+				Mix_SetError("MPEG file does not have any audio stream.");
+				music->error = 1;
+			} else {
+				smpeg.SMPEG_actualSpec(music->data.mp3, &used_mixer);
+			}
+		} else {
 			music->error = 1;
-		}else{
-			SMPEG_actualSpec(music->data.mp3, &used_mixer);
 		}
 	} else
 #endif
@@ -586,7 +620,7 @@ Mix_Music *Mix_LoadMUS(const char *file)
 			music->data.module->extspd  = 1;
 			music->data.module->panflag = 1;
 			music->data.module->wrap    = 0;
-			music->data.module->loop    = 0;
+			music->data.module->loop    = 1;
 #if 0 /* Don't set fade out by default - unfortunately there's no real way
          to query the status of the song or set trigger actions.  Hum. */
 			music->data.module->fadeout = 1;
@@ -660,7 +694,8 @@ void Mix_FreeMusic(Mix_Music *music)
 #endif
 #ifdef MP3_MUSIC
 			case MUS_MP3:
-				SMPEG_delete(music->data.mp3);
+				smpeg.SMPEG_delete(music->data.mp3);
+				Mix_QuitMP3();
 				break;
 #endif
 			default:
@@ -747,9 +782,9 @@ static int music_internal_play(Mix_Music *music, double position)
 #endif
 #ifdef MP3_MUSIC
 	    case MUS_MP3:
-		SMPEG_enableaudio(music->data.mp3,1);
-		SMPEG_enablevideo(music->data.mp3,0);
-		SMPEG_play(music_playing->data.mp3);
+		smpeg.SMPEG_enableaudio(music->data.mp3,1);
+		smpeg.SMPEG_enablevideo(music->data.mp3,0);
+		smpeg.SMPEG_play(music_playing->data.mp3);
 		break;
 #endif
 	    default:
@@ -838,10 +873,10 @@ int music_internal_position(double position)
 #ifdef MP3_MUSIC
 	    case MUS_MP3:
 		if ( position > 0.0 ) {
-			SMPEG_skip(music_playing->data.mp3, position);
+			smpeg.SMPEG_skip(music_playing->data.mp3, (float)position);
 		} else {
-			SMPEG_rewind(music_playing->data.mp3);
-			SMPEG_play(music_playing->data.mp3);
+			smpeg.SMPEG_rewind(music_playing->data.mp3);
+			smpeg.SMPEG_play(music_playing->data.mp3);
 		}
 		break;
 #endif
@@ -921,7 +956,7 @@ static void music_internal_volume(int volume)
 #endif
 #ifdef MP3_MUSIC
 	    case MUS_MP3:
-		SMPEG_setvolume(music_playing->data.mp3,(int)(((float)volume/(float)MIX_MAX_VOLUME)*100.0));
+		smpeg.SMPEG_setvolume(music_playing->data.mp3,(int)(((float)volume/(float)MIX_MAX_VOLUME)*100.0));
 		break;
 #endif
 	    default:
@@ -989,7 +1024,7 @@ static void music_internal_halt(void)
 #endif
 #ifdef MP3_MUSIC
 	    case MUS_MP3:
-		SMPEG_stop(music_playing->data.mp3);
+		smpeg.SMPEG_stop(music_playing->data.mp3);
 		break;
 #endif
 	    default:
@@ -1015,11 +1050,30 @@ int Mix_FadeOutMusic(int ms)
 {
 	int retval = 0;
 
+	if (ms <= 0) {  /* just halt immediately. */
+		Mix_HaltMusic();
+		return 1;
+	}
+
 	SDL_LockAudio();
-	if ( music_playing && (music_playing->fading == MIX_NO_FADING) ) {
+	if ( music_playing) {
+                int fade_steps = (ms + ms_per_step - 1)/ms_per_step;
+                if ( music_playing->fading == MIX_NO_FADING ) {
+	        	music_playing->fade_step = 0;
+                } else {
+                        int step;
+                        int old_fade_steps = music_playing->fade_steps;
+                        if ( music_playing->fading == MIX_FADING_OUT ) {
+                                step = music_playing->fade_step;
+                        } else {
+                                step = old_fade_steps
+                                        - music_playing->fade_step + 1;
+                        }
+                        music_playing->fade_step = (step * fade_steps)
+                                / old_fade_steps;
+                }
 		music_playing->fading = MIX_FADING_OUT;
-		music_playing->fade_step = 0;
-		music_playing->fade_steps = ms/ms_per_step;
+		music_playing->fade_steps = fade_steps;
 		retval = 1;
 	}
 	SDL_UnlockAudio();
@@ -1112,7 +1166,7 @@ static int music_internal_playing()
 #endif
 #ifdef MP3_MUSIC
 	    case MUS_MP3:
-		if ( SMPEG_status(music_playing->data.mp3) != SMPEG_PLAYING )
+		if ( smpeg.SMPEG_status(music_playing->data.mp3) != SMPEG_PLAYING )
 			playing = 0;
 		break;
 #endif
@@ -1226,9 +1280,12 @@ void close_music(void)
 	MikMod_UnregisterAllDrivers();
 # endif
 #endif
+#ifdef MID_MUSIC
+# ifdef USE_TIMIDITY_MIDI
+	Timidity_Close();
+# endif
+#endif
 }
-
-#ifdef USE_RWOPS
 
 # ifdef LIBMIKMOD_MUSIC
 typedef struct
@@ -1334,6 +1391,46 @@ Mix_Music *Mix_LoadMUS_RW(SDL_RWops *rw) {
 		}
 	} else
 #endif
+#ifdef MP3_MUSIC
+	if ( magic[0] == 0xFF && (magic[1] & 0xF0) == 0xF0 ) {
+		if ( Mix_InitMP3() == 0 ) {
+			SMPEG_Info info;
+			music->type = MUS_MP3;
+			music->data.mp3 = smpeg.SMPEG_new_rwops(rw, &info, 0);
+			if ( !info.has_audio ) {
+				Mix_SetError("MPEG file does not have any audio stream.");
+				music->error = 1;
+			} else {
+				smpeg.SMPEG_actualSpec(music->data.mp3, &used_mixer);
+			}
+		} else {
+			music->error = 1;
+		}
+	} else
+#endif
+#ifdef MID_MUSIC
+	/* MIDI files have the magic four bytes "MThd" */
+	if ( strcmp((char *)magic, "MThd") == 0 ) {
+		music->type = MUS_MID;
+		music->error = 1;
+#ifdef USE_NATIVE_MIDI
+		if ( native_midi_ok ) {
+			music->data.nativemidi = native_midi_loadsong_RW(rw);
+			if ( music->data.nativemidi ) {
+				music->error = 0;
+			}
+		} MIDI_ELSE
+#endif
+#ifdef USE_TIMIDITY_MIDI
+		if ( timidity_ok ) {
+			music->data.midi = Timidity_LoadSong_RW(rw);
+			if ( music->data.midi ) {
+				music->error = 0;
+			}
+		}
+#endif
+	} else
+#endif
 #if defined(MOD_MUSIC) || defined(LIBMIKMOD_MUSIC)
 	if (1) {
 		music->type=MUS_MOD;
@@ -1341,6 +1438,16 @@ Mix_Music *Mix_LoadMUS_RW(SDL_RWops *rw) {
 		if (music->data.module==NULL) {
 			Mix_SetError("%s",MikMod_strerror(MikMod_errno));
 			music->error=1;
+		} else {
+			/* Stop implicit looping, fade out and other flags. */
+			music->data.module->extspd  = 1;
+			music->data.module->panflag = 1;
+			music->data.module->wrap    = 0;
+			music->data.module->loop    = 0;
+#if 0 /* Don't set fade out by default - unfortunately there's no real way
+         to query the status of the song or set trigger actions.  Hum. */
+			music->data.module->fadeout = 1;
+#endif
 		}
 	} else
 #endif
@@ -1354,5 +1461,3 @@ Mix_Music *Mix_LoadMUS_RW(SDL_RWops *rw) {
 	}
 	return(music);
 }
-
-#endif /* USE_RWOPS */

@@ -88,6 +88,13 @@ extern MikMod_handler_t _mm_errorhandler;
 
 /*========== Memory allocation */
 
+/* _mm_malloc and _mm_free are defined in malloc.h in Visual C++ 6 */
+#ifdef _mm_malloc
+#undef _mm_malloc
+#endif
+#ifdef _mm_free
+#undef _mm_free
+#endif
 extern void* _mm_malloc(size_t);
 extern void* _mm_calloc(size_t,size_t);
 #define _mm_free(p) { if (p) free(p); p = NULL; }
@@ -136,10 +143,8 @@ DECLARE_MUTEX(vars);
 /*========== Portable file I/O */
 
 /* SDL_RWops compatability */
-#ifdef USE_RWOPS
 extern MREADER *_mm_new_rwops_reader(SDL_RWops * rw);
 extern void _mm_delete_rwops_reader (MREADER*);
-#endif /* USE_RWOPS */
 /* End SDL_RWops compatability */
 
 extern MREADER* _mm_new_file_reader(FILE* fp);

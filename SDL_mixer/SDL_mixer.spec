@@ -1,5 +1,5 @@
 %define name SDL_mixer
-%define version 1.2.6
+%define version 1.2.7
 %define release 1
 
 Summary: Simple DirectMedia Layer - Sample Mixer Library
@@ -7,7 +7,7 @@ Name: %{name}
 Version: %{version}
 Release: %{release}
 Source0: %{name}-%{version}.tar.gz
-Copyright: LGPL
+License: LGPL
 Group: System Environment/Libraries
 BuildRoot: /var/tmp/%{name}-buildroot
 Prefix: %{_prefix}
@@ -33,7 +33,7 @@ libraries.
 %setup 
 
 %build
-CFLAGS="$RPM_OPT_FLAGS" ./configure --prefix=%{prefix} --disable-music-mp3
+CFLAGS="$RPM_OPT_FLAGS" ./configure --prefix=%{prefix}
 make
 
 %install

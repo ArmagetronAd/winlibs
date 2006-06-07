@@ -1422,7 +1422,7 @@ int Mix_SetPanning(int channel, Uint8 left, Uint8 right)
     	angle = 127 - angle;
 	angle = -angle;
     	angle = angle * 90 / 128; /* Make it larger for more effect? */
-	return( Mix_SetPosition(channel, (Sint16)angle, 0) );
+	return( Mix_SetPosition(channel, angle, 0) );
     }
 
     f = get_position_effect_func(format, channels);

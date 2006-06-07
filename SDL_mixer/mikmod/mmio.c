@@ -74,8 +74,6 @@ static long _mm_iobase=0,temp_iobase=0;
 
 */
 
-#ifdef USE_RWOPS
-
 typedef struct MRWOPSREADER {
 	MREADER core;
 	SDL_RWops* rw;
@@ -84,7 +82,7 @@ typedef struct MRWOPSREADER {
 
 static BOOL _mm_RWopsReader_Eof(MREADER* reader)
 {
-	if ( ((MRWOPSREADER*)reader)->end ==
+	if ( ((MRWOPSREADER*)reader)->end <
 			SDL_RWtell(((MRWOPSREADER*)reader)->rw) ) return 1;
 	else return 0;
 }
@@ -137,8 +135,6 @@ void _mm_delete_rwops_reader (MREADER* reader)
 {
 	if(reader) free(reader);
 }
-
-#endif /* USE_RWOPS */
 
 /*
 

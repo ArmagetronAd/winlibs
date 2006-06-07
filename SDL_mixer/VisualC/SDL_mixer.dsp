@@ -1,28 +1,29 @@
 # Microsoft Developer Studio Project File - Name="SDL_mixer" - Package Owner=<4>
-# Microsoft Developer Studio Generated Build File, Format Version 6.00
-# ** NICHT BEARBEITEN **
+# Microsoft Developer Studio Generated Build File, Format Version 5.00
+# ** DO NOT EDIT **
 
 # TARGTYPE "Win32 (x86) Dynamic-Link Library" 0x0102
 
 CFG=SDL_mixer - Win32 Debug
-!MESSAGE Dies ist kein gültiges Makefile. Zum Erstellen dieses Projekts mit NMAKE
-!MESSAGE verwenden Sie den Befehl "Makefile exportieren" und führen Sie den Befehl
+!MESSAGE This is not a valid makefile. To build this project using NMAKE,
+!MESSAGE use the Export Makefile command and run
 !MESSAGE 
 !MESSAGE NMAKE /f "SDL_mixer.mak".
 !MESSAGE 
-!MESSAGE Sie können beim Ausführen von NMAKE eine Konfiguration angeben
-!MESSAGE durch Definieren des Makros CFG in der Befehlszeile. Zum Beispiel:
+!MESSAGE You can specify a configuration when running NMAKE
+!MESSAGE by defining the macro CFG on the command line. For example:
 !MESSAGE 
 !MESSAGE NMAKE /f "SDL_mixer.mak" CFG="SDL_mixer - Win32 Debug"
 !MESSAGE 
-!MESSAGE Für die Konfiguration stehen zur Auswahl:
+!MESSAGE Possible choices for configuration are:
 !MESSAGE 
-!MESSAGE "SDL_mixer - Win32 Release" (basierend auf  "Win32 (x86) Dynamic-Link Library")
-!MESSAGE "SDL_mixer - Win32 Debug" (basierend auf  "Win32 (x86) Dynamic-Link Library")
+!MESSAGE "SDL_mixer - Win32 Release" (based on\
+ "Win32 (x86) Dynamic-Link Library")
+!MESSAGE "SDL_mixer - Win32 Debug" (based on\
+ "Win32 (x86) Dynamic-Link Library")
 !MESSAGE 
 
 # Begin Project
-# PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName ""
 # PROP Scc_LocalPath ""
 CPP=cl.exe
@@ -43,10 +44,9 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /FD /c
-# ADD CPP /nologo /MD /W3 /GX /O2 /I "..\mikmod" /I "..\timidity" /I "..\native_midi" /I "vorbis\include" /I "../../SDL/include" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WAV_MUSIC" /D "MOD_MUSIC" /U "../SDL" /U "G:\ArmagetronDevel\Source\libs\SDL\include" /FD /c
-# SUBTRACT CPP /YX
-# ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /o "NUL" /win32
-# ADD MTL /nologo /D "NDEBUG" /mktyplib203 /o "NUL" /win32
+# ADD CPP /nologo /MD /W3 /GX /O2 /I "..\mikmod" /I "..\timidity" /I "..\native_midi" /I "vorbis\include" /I "smpeg\include" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "WAV_MUSIC" /D "MOD_MUSIC" /D "MID_MUSIC" /D "USE_TIMIDITY_MIDI" /D "USE_NATIVE_MIDI" /D "OGG_MUSIC" /D OGG_DYNAMIC=\"vorbisfile.dll\" /D "MP3_MUSIC" /D MP3_DYNAMIC=\"smpeg.dll\" /YX /FD /c
+# ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /o NUL /win32
+# ADD MTL /nologo /D "NDEBUG" /mktyplib203 /o NUL /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
 # ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
@@ -54,7 +54,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib /nologo /subsystem:windows /dll /machine:I386
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib /nologo /subsystem:windows /dll /machine:I386 /out:"../../../dist/SDL_mixer.dll"
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib SDL.lib /nologo /subsystem:windows /dll /machine:I386
 
 !ELSEIF  "$(CFG)" == "SDL_mixer - Win32 Debug"
 
@@ -70,10 +70,9 @@ LINK32=link.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /YX /FD /c
-# ADD CPP /nologo /MD /W3 /Gm /GX /ZI /Od /I "..\mikmod" /I "..\timidity" /I "..\native_midi" /I "vorbis\include" /I "../../SDL/include" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WAV_MUSIC" /D "MOD_MUSIC" /U "../SDL/" /FD /c
-# SUBTRACT CPP /YX
-# ADD BASE MTL /nologo /D "_DEBUG" /mktyplib203 /o "NUL" /win32
-# ADD MTL /nologo /D "_DEBUG" /mktyplib203 /o "NUL" /win32
+# ADD CPP /nologo /MD /W3 /Gm /GX /Zi /Od /I "..\mikmod" /I "..\timidity" /I "..\native_midi" /I "vorbis\include" /I "smpeg\include" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "WAV_MUSIC" /D "MOD_MUSIC" /D "MID_MUSIC" /D "USE_TIMIDITY_MIDI" /D "USE_NATIVE_MIDI" /D "OGG_MUSIC" /D OGG_DYNAMIC=\"vorbisfile.dll\" /D "MP3_MUSIC" /D MP3_DYNAMIC=\"smpeg.dll\" /YX /FD /c
+# ADD BASE MTL /nologo /D "_DEBUG" /mktyplib203 /o NUL /win32
+# ADD MTL /nologo /D "_DEBUG" /mktyplib203 /o NUL /win32
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
 # ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe
@@ -81,7 +80,7 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib /nologo /subsystem:windows /dll /debug /machine:I386 /pdbtype:sept
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib /nologo /subsystem:windows /dll /debug /machine:I386 /out:"../../../debug/SDL_mixer.dll" /pdbtype:sept
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib winmm.lib SDL.lib /nologo /subsystem:windows /dll /debug /machine:I386 /pdbtype:sept
 
 !ENDIF 
 
@@ -89,6 +88,22 @@ LINK32=link.exe
 
 # Name "SDL_mixer - Win32 Release"
 # Name "SDL_mixer - Win32 Debug"
+# Begin Source File
+
+SOURCE=..\dynamic_mp3.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\dynamic_mp3.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\dynamic_ogg.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\dynamic_ogg.h
+# End Source File
 # Begin Source File
 
 SOURCE=..\effect_position.c
@@ -159,10 +174,6 @@ SOURCE=..\SDL_mixer.h
 # End Source File
 # Begin Source File
 
-SOURCE=Version.rc
-# End Source File
-# Begin Source File
-
 SOURCE=..\wavestream.c
 # End Source File
 # Begin Source File
@@ -171,15 +182,7 @@ SOURCE=..\wavestream.h
 # End Source File
 # Begin Source File
 
-SOURCE=vorbis\lib\vorbisfile_static.lib
-# End Source File
-# Begin Source File
-
-SOURCE=vorbis\lib\vorbis_static.lib
-# End Source File
-# Begin Source File
-
-SOURCE=vorbis\lib\ogg_static.lib
+SOURCE=Version.rc
 # End Source File
 # End Target
 # End Project
