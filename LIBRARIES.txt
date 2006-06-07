@@ -1,0 +1,88 @@
+To update a library, delete all files except files in .svn directories.
+Then extract those folders from the source code release that are already
+contained in the project. Update project file and make
+a list of all new files. Once it compiles and runs commit
+all new files from the list and the modified and deleted files to
+version control.
+
+Links and Instructions for each library:
+
+SDL:	
+	Version: 1.2.10
+	Link: http://www.libsdl.org/download-1.2.php (latest 1.2.10)
+	Download: Source Archiv
+
+SDL_image:
+	Version: 1.2.5
+	Link: http://www.libsdl.org/projects/SDL_image/ (latest 1.2.5)
+	Download: Source Archiv
+
+*jpeg:
+	Version: 6b
+	Link: http://gnuwin32.sourceforge.net/packages/jpeg.htm (latest 6b)
+	Download: Developer files Archive, Binaries
+	Usage: Put files in SDL_image/VisualC/VisualC/graphics/{include,lib}
+	Homepage: http://www.ijg.org/ (latest 6b)
+*libpng:
+	Version: 1.2.8
+	Link: http://gnuwin32.sourceforge.net/packages/libpng.htm (latest 1.2.8)
+	Download: Developer files Archive, Binaries
+	Homepage: http://sourceforge.net/project/showfiles.php?group_id=5624 (latest 1.2.10)
+		http://www.libpng.org/pub/png/libpng.html
+*libz:
+	Version: 1.2.3
+	Link: http://gnuwin32.sourceforge.net/packages/zlib.htm (latest 1.2.3)
+	Download: Developer files Archive, Binaries
+	Homepage: http://www.zlib.net/ (latest 1.2.3)
+
+*libtiff:
+	Version: 3.8.2
+	Link: http://gnuwin32.sourceforge.net/packages/tiff.htm (latest 3.8.2)
+	Donwload: Developer files Archive, Binaries
+	Homepage: http://www.remotesensing.org/libtiff/ (latest 3.8.2)
+	
+SDL_mixer:
+	Version: 1.2.7
+	Link: http://www.libsdl.org/projects/SDL_mixer/ (latest 1.2.7)
+	Download: Source Archiv
+	mikmod:
+		Version: 3.1.9a is included with SDL_mixer(1.2.7)
+		Homepage: http://mikmod.raphnet.net/ (latest 3.1.11)
+	smpeg:
+		Version: ? included with SDL_mixer
+		Homepage: http://icculus.org/smpeg/ (latest 0.4.4)
+		Old Homepage: http://www.lokigames.com/development/smpeg.php3 (latest 0.4.4)
+		Link: http://en.wikipedia.org/wiki/SMPEG 0.4.4
+		Note: 0.4.4 no longer explicitly supports SDL_mixer
+libogg:
+	Version: 1.1.3
+	Link: http://www.xiph.org/downloads/ (latest 1.1.3)
+	Download: Source Archiv
+libvorbis:
+	Version: 1.1.2
+	Link: http://www.xiph.org/downloads/ (latest 1.1.2)
+	Download: Source Archiv
+
+libiconv:
+	Version: 1.9.2
+	Link: http://gnuwin32.sourceforge.net/packages/libiconv.htm (latest 1.9.2)
+	Download: Developer files Archiv
+	Homepage: http://www.gnu.org/software/libiconv/ (latest 1.9.2)
+
+libxml2:
+	Version: 2.6.24
+	Link: ftp://ftp.zlatkovic.com/pub/libxml/ (latest 2.6.24)
+	Download: *.win32.zip
+	Homepage: http://xmlsoft.org/downloads.html
+FTGL:
+	Version: 2.1.2
+	Link: http://homepages.paradise.net.nz/henryj/code/#FTGL (latest 2.1.2)
+	Download: Source Archiv
+
+freetype2:
+	Version: 2.1.10.2079
+	Link: http://gnuwin32.sourceforge.net/packages/freetype.htm (latest 2.1.10)
+	Download: Developer files Archiv
+	Homepage: http://www.freetype.org/download.html#stable (latest 2.2.1)
+	
+http://wiki.codeblocks.org/index.php?title=FAQ#Q:_How_can_I_use_a_DLL_without_DEF_or_LIB_files_.3F
