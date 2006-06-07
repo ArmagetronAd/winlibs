@@ -29,28 +29,28 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  *
  * the version string like "1.2.3"
  */
-#define LIBXML_DOTTED_VERSION "2.6.20"
+#define LIBXML_DOTTED_VERSION "2.6.24"
 
 /**
  * LIBXML_VERSION:
  *
  * the version number: 1.2.3 value is 1002003
  */
-#define LIBXML_VERSION 20620
+#define LIBXML_VERSION 20624
 
 /**
  * LIBXML_VERSION_STRING:
  *
  * the version number string, 1.2.3 value is "1002003"
  */
-#define LIBXML_VERSION_STRING "20620"
+#define LIBXML_VERSION_STRING "20624"
 
 /**
  * LIBXML_VERSION_EXTRA:
  *
  * extra version information, used to show a CVS compilation
  */
-#define LIBXML_VERSION_EXTRA "CVS2538"
+#define LIBXML_VERSION_EXTRA "CVS2773"
 
 /**
  * LIBXML_TEST_VERSION:
@@ -58,7 +58,7 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  * Macro to check that the libxml version in use is compatible with
  * the version the software has been compiled against
  */
-#define LIBXML_TEST_VERSION xmlCheckVersion(20620);
+#define LIBXML_TEST_VERSION xmlCheckVersion(20624);
 
 #ifndef VMS
 #if 0
@@ -331,6 +331,15 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
 #endif
 
 /**
+ * LIBXML_EXPR_ENABLED:
+ *
+ * Whether the formal expressions interfaces are compiled in
+ */
+#if 1
+#define LIBXML_EXPR_ENABLED
+#endif
+
+/**
  * LIBXML_SCHEMAS_ENABLED:
  *
  * Whether the Schemas validation interfaces are compiled in
@@ -340,12 +349,26 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
 #endif
 
 /**
+ * LIBXML_SCHEMATRON_ENABLED:
+ *
+ * Whether the Schematron validation interfaces are compiled in
+ */
+#if 1
+#define LIBXML_SCHEMATRON_ENABLED
+#endif
+
+/**
  * LIBXML_MODULES_ENABLED:
  *
  * Whether the module interfaces are compiled in
  */
 #if 1
 #define LIBXML_MODULES_ENABLED
+/**
+ * LIBXML_MODULE_EXTENSION:
+ *
+ * the string suffix used by dynamic modules (usually shared libraries)
+ */
 #define LIBXML_MODULE_EXTENSION ".dll" 
 #endif
 
