@@ -10,6 +10,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#ifdef DEBUG
+// This is required for using win console functions
+#define _WIN32_WINNT 0x0501
+#include <conio.h>
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 #ifdef _WIN32_WCE
 # define DIR_SEPERATOR TEXT("\\")
 # undef _getcwd
@@ -348,6 +356,48 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 		return OutOfMemory();
 	}
 	ParseCommandLine(cmdline, argv);
+
+#ifdef DEBUG
+	// Code from: http://www.cygwin.com/ml/cygwin/2004-05/msg00215.html
+	// http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dllproc/base/attachconsole.asp
+	int hConHandle;
+	long lStdHandle;
+	FILE *fp;
+	int iVar;
+
+	// Try to alloc a console / works on Windows 9x - XP
+	// attach only works from Windows XP on
+	AllocConsole();
+
+	// redirect unbuffered STDOUT to the console
+	lStdHandle = (long)GetStdHandle(STD_OUTPUT_HANDLE);
+	hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+	fp = _fdopen( hConHandle, "w" );
+	*stdout = *fp;
+	setvbuf( stdout, NULL, _IONBF, 0 );
+
+	// redirect unbuffered STDIN to the console
+	lStdHandle = (long)GetStdHandle(STD_INPUT_HANDLE);
+	hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+	fp = _fdopen( hConHandle, "r" );
+	*stdin = *fp;
+	setvbuf( stdin, NULL, _IONBF, 0 );
+
+	// redirect unbuffered STDERR to the console
+	lStdHandle = (long)GetStdHandle(STD_ERROR_HANDLE);
+	hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+	fp = _fdopen( hConHandle, "w" );
+	*stderr = *fp;
+	setvbuf( stderr, NULL, _IONBF, 0 );
+
+	// test stdio
+//	fprintf(stdout, "Test output to stdout\n");
+//	fprintf(stderr, "Test output to stderr\n");
+//	fprintf(stdout, "Enter an integer to test stdin: ");
+//	fscanf(stdin,"%d", &iVar);
+//	printf("You entered %d\n", iVar);
+//	getch();
+#endif
 
 	/* Run the main program (after a little SDL initialization) */
 	console_main(argc, argv);

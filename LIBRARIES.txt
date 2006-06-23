@@ -12,6 +12,12 @@ SDL:
 	Link: http://www.libsdl.org/download-1.2.php (latest 1.2.10)
 	Download: Source Archiv
 
+*directx:
+	Version: 8.0
+	Link: http://www.libsdl.org/extras/win32/common/ (lastest 5.0)
+	Download: direct-devel.tar.gz
+	Homepage: http://msdn.microsoft.com/directx/sdk/default.aspx (latest 9.0c)
+
 SDL_image:
 	Version: 1.2.5
 	Link: http://www.libsdl.org/projects/SDL_image/ (latest 1.2.5)
@@ -79,10 +85,16 @@ FTGL:
 	Link: http://homepages.paradise.net.nz/henryj/code/#FTGL (latest 2.1.2)
 	Download: Source Archiv
 
-freetype2:
+*freetype2:
 	Version: 2.1.10.2079
 	Link: http://gnuwin32.sourceforge.net/packages/freetype.htm (latest 2.1.10)
 	Download: Developer files Archiv
 	Homepage: http://www.freetype.org/download.html#stable (latest 2.2.1)
+
+boost:
+	Version: 1.3.3_1
+	Link: http://sourceforge.net/project/showfiles.php?group_id=7586 (latest 1.3.3_1)
+	Download: Source Archive and just extract required headers.
+	Homepage: http://www.boost.org
 	
 http://wiki.codeblocks.org/index.php?title=FAQ#Q:_How_can_I_use_a_DLL_without_DEF_or_LIB_files_.3F
