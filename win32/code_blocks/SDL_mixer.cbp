@@ -82,11 +82,14 @@
 			<Add option="-D_WINDOWS" />
 			<Add option="-DWAV_MUSIC" />
 			<Add option="-DMOD_MUSIC" />
-			<Add option="-DOGG_MUSIC" />
 			<Add option="-DMID_MUSIC" />
 			<Add option="-DUSE_NATIVE_MIDI" />
 			<Add option="-DUSE_TIMIDITY_MIDI" />
-			<Add option="-DM_P3_MUSIC" />
+			<Add option="-DMP3_MUSIC" />
+			<Add option='-DMP3_DYNAMIC=\&quot;smpeg.dll\&quot;' />
+			<Add option="-DOGG_MUSIC" />
+			<Add option='-DOGG_DYNAMIC=\&quot;vorbisfile.dll\&quot;' />
+			<Add option="-DSDL_SURROUND" />
 			<Add directory="..\..\SDL_mixer\mikmod" />
 			<Add directory="..\..\SDL\include" />
 			<Add directory="..\..\libogg\include" />

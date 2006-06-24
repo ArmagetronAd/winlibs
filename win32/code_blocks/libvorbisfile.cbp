@@ -8,14 +8,15 @@
 		<Option compiler="gcc" />
 		<Build>
 			<Target title="Win32 Release">
-				<Option output="..\..\build\dist\libvorbisfile.a" />
-				<Option working_dir="" />
+				<Option output="..\..\build\dist\vorbisfile.dll" />
+				<Option working_dir="..\..\build\dist" />
 				<Option object_output="..\..\build\tmp\libvorbisfile___Win32_Release" />
 				<Option external_deps="..\..\build\dist\libvorbis.a;" />
-				<Option type="2" />
+				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option includeInTargetAll="1" />
 				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
 					<Add option="-O2" />
@@ -29,14 +30,15 @@
 				</Linker>
 			</Target>
 			<Target title="Win32 Debug">
-				<Option output="..\..\build\debug\libvorbisfile.a" />
-				<Option working_dir="" />
+				<Option output="..\..\build\debug\vorbisfile.dll" />
+				<Option working_dir="..\..\build\debug" />
 				<Option object_output="..\..\build\tmp\libvorbisfile___Win32_Debug" />
 				<Option external_deps="..\..\libvorbis\win32\Vorbis_Static_Debug\libvorbis_static_d.a;" />
-				<Option type="2" />
+				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option includeInTargetAll="1" />
 				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
 					<Add option="-W" />
@@ -49,13 +51,14 @@
 				</Linker>
 			</Target>
 			<Target title="Win32 Profile">
-				<Option output="..\..\build\profile\libvorbisfile.a" />
-				<Option working_dir="" />
+				<Option output="..\..\build\profile\vorbisfile.dll" />
+				<Option working_dir="..\..\build\profile" />
 				<Option object_output="..\..\build\tmp\libvorbisfile___Win32_Profile" />
 				<Option external_deps="..\..\libvorbis\win32\Vorbis_Static_Debug\libvorbis_static_d.a;" />
-				<Option type="2" />
+				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
 					<Add option="-W" />

@@ -8,13 +8,14 @@
 		<Option compiler="gcc" />
 		<Build>
 			<Target title="Win32 Release">
-				<Option output="..\..\build\dist\libogg.a" />
-				<Option working_dir="" />
+				<Option output="..\..\build\dist\ogg.dll" />
+				<Option working_dir="..\..\build\dist" />
 				<Option object_output="..\..\build\tmp\libogg___Win32_Release" />
-				<Option type="2" />
+				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option includeInTargetAll="1" />
 				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
 					<Add option="-O2" />
@@ -23,13 +24,14 @@
 				</Compiler>
 			</Target>
 			<Target title="Win32 Debug">
-				<Option output="..\..\build\debug\libogg.a" />
-				<Option working_dir="" />
+				<Option output="..\..\build\debug\ogg.dll" />
+				<Option working_dir="..\..\build\debug" />
 				<Option object_output="..\..\build\tmp\libogg___Win32_Debug" />
-				<Option type="2" />
+				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option includeInTargetAll="1" />
 				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
 					<Add option="-W" />
@@ -38,12 +40,13 @@
 				</Compiler>
 			</Target>
 			<Target title="Win32 Profile">
-				<Option output="..\..\build\profile\libogg.a" />
-				<Option working_dir="" />
+				<Option output="..\..\build\profile\ogg.dll" />
+				<Option working_dir="..\..\build\profile" />
 				<Option object_output="..\..\build\tmp\libogg___Win32_Profile" />
-				<Option type="2" />
+				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
 					<Add option="-W" />
