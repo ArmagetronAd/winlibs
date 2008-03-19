@@ -29,28 +29,28 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  *
  * the version string like "1.2.3"
  */
-#define LIBXML_DOTTED_VERSION "2.6.24"
+#define LIBXML_DOTTED_VERSION "2.6.30"
 
 /**
  * LIBXML_VERSION:
  *
- * the version number: 1.2.3 value is 1002003
+ * the version number: 1.2.3 value is 10203
  */
-#define LIBXML_VERSION 20624
+#define LIBXML_VERSION 20630
 
 /**
  * LIBXML_VERSION_STRING:
  *
- * the version number string, 1.2.3 value is "1002003"
+ * the version number string, 1.2.3 value is "10203"
  */
-#define LIBXML_VERSION_STRING "20624"
+#define LIBXML_VERSION_STRING "20630"
 
 /**
  * LIBXML_VERSION_EXTRA:
  *
  * extra version information, used to show a CVS compilation
  */
-#define LIBXML_VERSION_EXTRA "CVS2773"
+#define LIBXML_VERSION_EXTRA ""
 
 /**
  * LIBXML_TEST_VERSION:
@@ -58,7 +58,7 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  * Macro to check that the libxml version in use is compatible with
  * the version the software has been compiled against
  */
-#define LIBXML_TEST_VERSION xmlCheckVersion(20624);
+#define LIBXML_TEST_VERSION xmlCheckVersion(20630);
 
 #ifndef VMS
 #if 0
@@ -91,7 +91,8 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  * Whether the thread support is configured in
  */
 #if 1
-#if defined(_REENTRANT) || defined(__MT__) || (_POSIX_C_SOURCE - 0 >= 199506L)
+#if defined(_REENTRANT) || defined(__MT__) || \
+    (defined(_POSIX_C_SOURCE) && (_POSIX_C_SOURCE - 0 >= 199506L))
 #define LIBXML_THREAD_ENABLED
 #endif
 #endif
@@ -370,6 +371,15 @@ XMLPUBFUN void XMLCALL xmlCheckVersion(int version);
  * the string suffix used by dynamic modules (usually shared libraries)
  */
 #define LIBXML_MODULE_EXTENSION ".dll" 
+#endif
+
+/**
+ * LIBXML_ZLIB_ENABLED:
+ *
+ * Whether the Zlib support is compiled in
+ */
+#if 1
+#define LIBXML_ZLIB_ENABLED
 #endif
 
 /**
