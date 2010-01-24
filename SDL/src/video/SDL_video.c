@@ -1,126 +1,132 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2004 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
+    modify it under the terms of the GNU Lesser General Public
     License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
+    version 2.1 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU Library General Public
-    License along with this library; if not, write to the Free
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-
-#ifdef SAVE_RCSID
-static char rcsid =
- "@(#) $Id$";
-#endif
+#include "SDL_config.h"
 
 /* The high-level video driver subsystem */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "SDL.h"
-#include "SDL_error.h"
-#include "SDL_video.h"
-#include "SDL_events.h"
-#include "SDL_mutex.h"
 #include "SDL_sysvideo.h"
-#include "SDL_sysevents.h"
 #include "SDL_blit.h"
 #include "SDL_pixels_c.h"
-#include "SDL_events_c.h"
 #include "SDL_cursor_c.h"
+#include "../events/SDL_sysevents.h"
+#include "../events/SDL_events_c.h"
 
 /* Available video drivers */
 static VideoBootStrap *bootstrap[] = {
-#ifdef ENABLE_X11
-	&X11_bootstrap,
-#endif
-#ifdef ENABLE_DGA
-	&DGA_bootstrap,
-#endif
-#ifdef ENABLE_NANOX
-	&NX_bootstrap,
-#endif
-#ifdef ENABLE_QTOPIA
-	&Qtopia_bootstrap,
-#endif
-#ifdef ENABLE_FBCON
-	&FBCON_bootstrap,
-#endif
-#ifdef ENABLE_DIRECTFB
-	&DirectFB_bootstrap,
-#endif
-#ifdef ENABLE_PS2GS
-	&PS2GS_bootstrap,
-#endif
-#ifdef ENABLE_GGI
-	&GGI_bootstrap,
-#endif
-#ifdef ENABLE_VGL
-	&VGL_bootstrap,
-#endif
-#ifdef ENABLE_SVGALIB
-	&SVGALIB_bootstrap,
-#endif
-#ifdef ENABLE_AALIB
-	&AALIB_bootstrap,
-#endif
-#ifdef ENABLE_DIRECTX
-	&DIRECTX_bootstrap,
-#endif
-#ifdef ENABLE_WINDIB
-	&WINDIB_bootstrap,
-#endif
-#ifdef ENABLE_BWINDOW
-	&BWINDOW_bootstrap,
-#endif
-#ifdef ENABLE_TOOLBOX
-	&TOOLBOX_bootstrap,
-#endif
-#ifdef ENABLE_DRAWSPROCKET
-	&DSp_bootstrap,
-#endif
-#ifdef ENABLE_QUARTZ
+#if SDL_VIDEO_DRIVER_QUARTZ
 	&QZ_bootstrap,
 #endif
-#ifdef ENABLE_CYBERGRAPHICS
-	&CGX_bootstrap,
+#if SDL_VIDEO_DRIVER_X11
+	&X11_bootstrap,
 #endif
-#ifdef ENABLE_PHOTON
+#if SDL_VIDEO_DRIVER_DGA
+	&DGA_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_NANOX
+	&NX_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_IPOD
+	&iPod_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_QTOPIA
+	&Qtopia_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_WSCONS
+	&WSCONS_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_FBCON
+	&FBCON_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_DIRECTFB
+	&DirectFB_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_PS2GS
+	&PS2GS_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_PS3
+	&PS3_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_GGI
+	&GGI_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_VGL
+	&VGL_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_SVGALIB
+	&SVGALIB_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_GAPI
+	&GAPI_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_WINDIB
+	&WINDIB_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_DDRAW
+	&DIRECTX_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_BWINDOW
+	&BWINDOW_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_TOOLBOX
+	&TOOLBOX_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_DRAWSPROCKET
+	&DSp_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_PHOTON
 	&ph_bootstrap,
 #endif
-#ifdef ENABLE_EPOC
+#if SDL_VIDEO_DRIVER_EPOC
 	&EPOC_bootstrap,
 #endif
-#ifdef ENABLE_XBIOS
+#if SDL_VIDEO_DRIVER_XBIOS
 	&XBIOS_bootstrap,
 #endif
-#ifdef ENABLE_GEM
+#if SDL_VIDEO_DRIVER_GEM
 	&GEM_bootstrap,
 #endif
-#ifdef ENABLE_PICOGUI
+#if SDL_VIDEO_DRIVER_PICOGUI
 	&PG_bootstrap,
 #endif
-#ifdef ENABLE_DC
+#if SDL_VIDEO_DRIVER_DC
 	&DC_bootstrap,
 #endif
-#ifdef ENABLE_RISCOS
-    &RISCOS_bootstrap,
+#if SDL_VIDEO_DRIVER_NDS
+	&NDS_bootstrap,
 #endif
-#ifdef ENABLE_DUMMYVIDEO
+#if SDL_VIDEO_DRIVER_RISCOS
+	&RISCOS_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_OS2FS
+	&OS2FSLib_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_AALIB
+	&AALIB_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_CACA
+	&CACA_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_DUMMY
 	&DUMMY_bootstrap,
 #endif
 	NULL
@@ -134,7 +140,7 @@ void SDL_VideoQuit(void);
 void SDL_GL_UpdateRectsLock(SDL_VideoDevice* this, int numrects, SDL_Rect* rects);
 
 static SDL_GrabMode SDL_WM_GrabInputOff(void);
-#ifdef HAVE_OPENGL
+#if SDL_VIDEO_OPENGL
 static int lock_count = 0;
 #endif
 
@@ -170,13 +176,12 @@ int SDL_VideoInit (const char *driver_name, Uint32 flags)
 	video = NULL;
 	if ( driver_name != NULL ) {
 #if 0	/* This will be replaced with a better driver selection API */
-		if ( strrchr(driver_name, ':') != NULL ) {
-			index = atoi(strrchr(driver_name, ':')+1);
+		if ( SDL_strrchr(driver_name, ':') != NULL ) {
+			index = atoi(SDL_strrchr(driver_name, ':')+1);
 		}
 #endif
 		for ( i=0; bootstrap[i]; ++i ) {
-			if ( strncmp(bootstrap[i]->name, driver_name,
-			             strlen(bootstrap[i]->name)) == 0 ) {
+			if ( SDL_strcasecmp(bootstrap[i]->name, driver_name) == 0) {
 				if ( bootstrap[i]->available() ) {
 					video = bootstrap[i]->create(index);
 					break;
@@ -211,20 +216,16 @@ int SDL_VideoInit (const char *driver_name, Uint32 flags)
 	video->wm_icon  = NULL;
 	video->offset_x = 0;
 	video->offset_y = 0;
-	memset(&video->info, 0, (sizeof video->info));
+	SDL_memset(&video->info, 0, (sizeof video->info));
 	
 	video->displayformatalphapixel = NULL;
 
 	/* Set some very sane GL defaults */
 	video->gl_config.driver_loaded = 0;
 	video->gl_config.dll_handle = NULL;
-	video->gl_config.red_size = 5;
-#if 1 /* This seems to work on more video cards, as a default */
-	video->gl_config.green_size = 5;
-#else
-	video->gl_config.green_size = 6;
-#endif
-	video->gl_config.blue_size = 5;
+	video->gl_config.red_size = 3;
+	video->gl_config.green_size = 3;
+	video->gl_config.blue_size = 2;
 	video->gl_config.alpha_size = 0;
 	video->gl_config.buffer_size = 0;
 	video->gl_config.depth_size = 16;
@@ -237,9 +238,11 @@ int SDL_VideoInit (const char *driver_name, Uint32 flags)
 	video->gl_config.stereo = 0;
 	video->gl_config.multisamplebuffers = 0;
 	video->gl_config.multisamplesamples = 0;
+	video->gl_config.accelerated = -1; /* not known, don't set */
+	video->gl_config.swap_control = -1; /* not known, don't set */
 	
 	/* Initialize the video subsystem */
-	memset(&vformat, 0, sizeof(vformat));
+	SDL_memset(&vformat, 0, sizeof(vformat));
 	if ( video->VideoInit(video, &vformat) < 0 ) {
 		SDL_VideoQuit();
 		return(-1);
@@ -284,8 +287,7 @@ int SDL_VideoInit (const char *driver_name, Uint32 flags)
 char *SDL_VideoDriverName(char *namebuf, int maxlen)
 {
 	if ( current_video != NULL ) {
-		strncpy(namebuf, current_video->name, maxlen-1);
-		namebuf[maxlen-1] = '\0';
+		SDL_strlcpy(namebuf, current_video->name, maxlen);
 		return(namebuf);
 	}
 	return(NULL);
@@ -362,7 +364,7 @@ static Uint8 SDL_closest_depths[4][8] = {
 };
 
 
-#ifdef macintosh /* MPW optimization bug? */
+#ifdef __MACOS__ /* MPW optimization bug? */
 #define NEGATIVE_ONE 0xFFFFFFFF
 #else
 #define NEGATIVE_ONE -1
@@ -384,7 +386,7 @@ int SDL_VideoModeOK (int width, int height, int bpp, Uint32 flags)
 	}
 
 	/* Search through the list valid of modes */
-	memset(&format, 0, sizeof(format));
+	SDL_memset(&format, 0, sizeof(format));
 	supported = 0;
 	table = ((bpp+7)/8)-1;
 	SDL_closest_depths[table][0] = bpp;
@@ -456,7 +458,7 @@ static int SDL_GetVideoMode (int *w, int *h, int *BitsPerPixel, Uint32 flags)
 	}
 
 	/* No exact size match at any depth, look for closest match */
-	memset(&format, 0, sizeof(format));
+	SDL_memset(&format, 0, sizeof(format));
 	supported = 0;
 	table = ((*BitsPerPixel+7)/8)-1;
 	SDL_closest_depths[table][0] = *BitsPerPixel;
@@ -476,8 +478,11 @@ static int SDL_GetVideoMode (int *w, int *h, int *BitsPerPixel, Uint32 flags)
 			if ((sizes[i]->w >= *w) && (sizes[i]->h >= *h)) {
 				/* Mode with any dimension smaller or equal than current best ? */
 				if ((sizes[i]->w <= sizes[best]->w) || (sizes[i]->h <= sizes[best]->h)) {
-					best=i;
-					supported = 1;
+					/* Now choose the mode that has less pixels */
+					if ((sizes[i]->w * sizes[i]->h) <= (sizes[best]->w * sizes[best]->h)) {
+						best=i;
+						supported = 1;
+					}
 				}
 			}
 		}
@@ -504,7 +509,9 @@ static void SDL_ClearSurface(SDL_Surface *surface)
 		SDL_Flip(surface);
 		SDL_FillRect(surface, NULL, black);
 	}
-	SDL_Flip(surface);
+	if (surface->flags&SDL_FULLSCREEN) {
+		SDL_Flip(surface);
+	}
 }
 
 /*
@@ -533,7 +540,7 @@ static void SDL_CreateShadowSurface(int depth)
 	if ( SDL_ShadowSurface->format->palette ) {
 		SDL_ShadowSurface->flags |= SDL_HWPALETTE;
 		if ( depth == (SDL_VideoSurface->format)->BitsPerPixel ) {
-			memcpy(SDL_ShadowSurface->format->palette->colors,
+			SDL_memcpy(SDL_ShadowSurface->format->palette->colors,
 				SDL_VideoSurface->format->palette->colors,
 				SDL_VideoSurface->format->palette->ncolors*
 							sizeof(SDL_Color));
@@ -589,6 +596,13 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	}
 	this = video = current_video;
 
+	/* Default to the current width and height */
+	if ( width == 0 ) {
+		width = video->info.current_w;
+	}
+	if ( height == 0 ) {
+		height = video->info.current_h;
+	}
 	/* Default to the current video bpp */
 	if ( bpp == 0 ) {
 		flags |= SDL_ANYFORMAT;
@@ -628,6 +642,8 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	/* Reset the keyboard here so event callbacks can run */
 	SDL_ResetKeyboard();
 	SDL_ResetMouse();
+	SDL_SetMouseRange(width, height);
+	SDL_cursorstate &= ~CURSOR_USINGSW;
 
 	/* Clean up any previous video mode */
 	if ( SDL_PublicSurface != NULL ) {
@@ -640,12 +656,12 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 		SDL_FreeSurface(ready_to_go);
 	}
 	if ( video->physpal ) {
-		free(video->physpal->colors);
-		free(video->physpal);
+		SDL_free(video->physpal->colors);
+		SDL_free(video->physpal);
 		video->physpal = NULL;
 	}
 	if( video->gammacols) {
-		free(video->gammacols);
+		SDL_free(video->gammacols);
 		video->gammacols = NULL;
 	}
 
@@ -658,7 +674,10 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	SDL_VideoSurface = NULL;	/* In case it's freed by driver */
 	mode = video->SetVideoMode(this, prev_mode,video_w,video_h,video_bpp,flags);
 	if ( mode ) { /* Prevent resize events from mode change */
+          /* But not on OS/2 */
+#ifndef __OS2__
 	    SDL_PrivateResize(mode->w, mode->h);
+#endif
 
 	    /* Sam - If we asked for OpenGL mode, and didn't get it, fail */
 	    if ( is_opengl && !(mode->flags & SDL_OPENGL) ) {
@@ -737,7 +756,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	SDL_WM_GrabInput(saved_grab);
 	SDL_GetRelativeMouseState(NULL, NULL); /* Clear first large delta */
 
-#ifdef HAVE_OPENGL
+#if SDL_VIDEO_OPENGL
 	/* Load GL symbols (before MakeCurrent, where we need glGetString). */
 	if ( flags & (SDL_OPENGL | SDL_OPENGLBLIT) ) {
 
@@ -753,7 +772,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
     do { \
         video->func = SDL_GL_GetProcAddress(#func); \
         if ( ! video->func ) { \
-            SDL_SetError("Couldn't load GL function: %s\n", #func); \
+            SDL_SetError("Couldn't load GL function %s: %s\n", #func, SDL_GetError()); \
         return(NULL); \
         } \
     } while ( 0 );
@@ -763,7 +782,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 #include "SDL_glfuncs.h"
 #undef SDL_PROC	
 	}
-#endif /* HAVE_OPENGL */
+#endif /* SDL_VIDEO_OPENGL */
 
 	/* If we're running OpenGL, make the context current */
 	if ( (video->screen->flags & SDL_OPENGL) &&
@@ -776,7 +795,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	/* Set up a fake SDL surface for OpenGL "blitting" */
 	if ( (flags & SDL_OPENGLBLIT) == SDL_OPENGLBLIT ) {
 		/* Load GL functions for performing the texture updates */
-#ifdef HAVE_OPENGL
+#if SDL_VIDEO_OPENGL
 
 		/* Create a software surface for blitting */
 #ifdef GL_VERSION_1_2
@@ -785,8 +804,8 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 		   support the GL_UNSIGNED_SHORT_5_6_5 texture format.
 		 */
 		if ( (bpp == 16) &&
-		     (strstr((const char *)video->glGetString(GL_EXTENSIONS), "GL_EXT_packed_pixels") ||
-		     (atof((const char *)video->glGetString(GL_VERSION)) >= 1.2f))
+		     (SDL_strstr((const char *)video->glGetString(GL_EXTENSIONS), "GL_EXT_packed_pixels") ||
+		     (SDL_atof((const char *)video->glGetString(GL_VERSION)) >= 1.2f))
 		   ) {
 			video->is_32bit = 0;
 			SDL_VideoSurface = SDL_CreateRGBSurface(
@@ -831,7 +850,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 		SDL_FreeSurface(mode);
 
 		/* Set the surface completely opaque & white by default */
-		memset( SDL_VideoSurface->pixels, 255, SDL_VideoSurface->h * SDL_VideoSurface->pitch );
+		SDL_memset( SDL_VideoSurface->pixels, 255, SDL_VideoSurface->h * SDL_VideoSurface->pitch );
 		video->glGenTextures( 1, &video->texture );
 		video->glBindTexture( GL_TEXTURE_2D, video->texture );
 		video->glTexImage2D(
@@ -851,7 +870,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 
 		video->UpdateRects = SDL_GL_UpdateRectsLock;
 #else
-		SDL_SetError("Somebody forgot to #define HAVE_OPENGL");
+		SDL_SetError("Somebody forgot to #define SDL_VIDEO_OPENGL");
 		return(NULL);
 #endif
 	}
@@ -887,6 +906,8 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 		SDL_PublicSurface = SDL_VideoSurface;
 	}
 	video->info.vfmt = SDL_VideoSurface->format;
+	video->info.current_w = SDL_VideoSurface->w;
+	video->info.current_h = SDL_VideoSurface->h;
 
 	/* We're done! */
 	return(SDL_PublicSurface);
@@ -993,10 +1014,10 @@ void SDL_UpdateRect(SDL_Surface *screen, Sint32 x, Sint32 y, Uint32 w, Uint32 h)
 			return;
 
 		/* Fill the rectangle */
-		rect.x = x;
-		rect.y = y;
-		rect.w = w;
-		rect.h = h;
+		rect.x = (Sint16)x;
+		rect.y = (Sint16)y;
+		rect.w = (Uint16)w;
+		rect.h = (Uint16)h;
 		SDL_UpdateRects(screen, 1, &rect);
 	}
 }
@@ -1006,6 +1027,10 @@ void SDL_UpdateRects (SDL_Surface *screen, int numrects, SDL_Rect *rects)
 	SDL_VideoDevice *video = current_video;
 	SDL_VideoDevice *this = current_video;
 
+	if ( (screen->flags & (SDL_OPENGL | SDL_OPENGLBLIT)) == SDL_OPENGL ) {
+		SDL_SetError("OpenGL active, use SDL_GL_SwapBuffers()");
+		return;
+	}
 	if ( screen == SDL_ShadowSurface ) {
 		/* Blit the shadow surface using saved mapping */
 		SDL_Palette *pal = screen->format->palette;
@@ -1122,20 +1147,22 @@ static void SetPalette_logical(SDL_Surface *screen, SDL_Color *colors,
 	SDL_Palette *vidpal;
 
 	if ( colors != (pal->colors + firstcolor) ) {
-		memcpy(pal->colors + firstcolor, colors,
+		SDL_memcpy(pal->colors + firstcolor, colors,
 		       ncolors * sizeof(*colors));
 	}
 
-	vidpal = SDL_VideoSurface->format->palette;
-	if ( (screen == SDL_ShadowSurface) && vidpal ) {
-		/*
-		 * This is a shadow surface, and the physical
-		 * framebuffer is also indexed. Propagate the
-		 * changes to its logical palette so that
-		 * updates are always identity blits
-		 */
-		memcpy(vidpal->colors + firstcolor, colors,
-		       ncolors * sizeof(*colors));
+	if ( current_video && SDL_VideoSurface ) {
+		vidpal = SDL_VideoSurface->format->palette;
+		if ( (screen == SDL_ShadowSurface) && vidpal ) {
+			/*
+			 * This is a shadow surface, and the physical
+			 * framebuffer is also indexed. Propagate the
+			 * changes to its logical palette so that
+			 * updates are always identity blits
+			 */
+			SDL_memcpy(vidpal->colors + firstcolor, colors,
+			       ncolors * sizeof(*colors));
+		}
 	}
 	SDL_FormatChanged(screen);
 }
@@ -1150,7 +1177,7 @@ static int SetPalette_physical(SDL_Surface *screen,
 		/* We need to copy the new colors, since we haven't
 		 * already done the copy in the logical set above.
 		 */
-		memcpy(video->physpal->colors + firstcolor,
+		SDL_memcpy(video->physpal->colors + firstcolor,
 		       colors, ncolors * sizeof(*colors));
 	}
 	if ( screen == SDL_ShadowSurface ) {
@@ -1175,7 +1202,7 @@ static int SetPalette_physical(SDL_Surface *screen,
 					SDL_Palette *pp = video->physpal;
 					if(!pp)
 						pp = screen->format->palette;
-					video->gammacols = malloc(pp->ncolors
+					video->gammacols = SDL_malloc(pp->ncolors
 							  * sizeof(SDL_Color));
 					SDL_ApplyGamma(video->gamma,
 						       pp->colors,
@@ -1228,13 +1255,13 @@ int SDL_SetPalette(SDL_Surface *screen, int which,
 	int gotall;
 	int palsize;
 
-	if ( ! current_video ) {
+	if ( !screen ) {
 		return 0;
 	}
-	if ( screen != SDL_PublicSurface ) {
+	if ( !current_video || screen != SDL_PublicSurface ) {
 		/* only screens have physical palettes */
 		which &= ~SDL_PHYSPAL;
-	} else if( (screen->flags & SDL_HWPALETTE) != SDL_HWPALETTE ) {
+	} else if ( (screen->flags & SDL_HWPALETTE) != SDL_HWPALETTE ) {
 		/* hardware palettes required for split colormaps */
 		which |= SDL_PHYSPAL | SDL_LOGPAL;
 	}
@@ -1267,23 +1294,21 @@ int SDL_SetPalette(SDL_Surface *screen, int which,
 		 * program's idea of what the screen looks like, but changes
 		 * its actual appearance.
 		 */
-		if(!video)
-			return gotall;	/* video not yet initialized */
-		if(!video->physpal && !(which & SDL_LOGPAL) ) {
+		if ( !video->physpal && !(which & SDL_LOGPAL) ) {
 			/* Lazy physical palette allocation */
 			int size;
-			SDL_Palette *pp = malloc(sizeof(*pp));
+			SDL_Palette *pp = SDL_malloc(sizeof(*pp));
 			if ( !pp ) {
 				return 0;
 			}
-			current_video->physpal = pp;
+			video->physpal = pp;
 			pp->ncolors = pal->ncolors;
 			size = pp->ncolors * sizeof(SDL_Color);
-			pp->colors = malloc(size);
+			pp->colors = SDL_malloc(size);
 			if ( !pp->colors ) {
 				return 0;
 			}
-			memcpy(pp->colors, pal->colors, size);
+			SDL_memcpy(pp->colors, pal->colors, size);
 		}
 		if ( ! SetPalette_physical(screen,
 		                           colors, firstcolor, ncolors) ) {
@@ -1339,24 +1364,24 @@ void SDL_VideoQuit (void)
 
 		/* Clean up miscellaneous memory */
 		if ( video->physpal ) {
-			free(video->physpal->colors);
-			free(video->physpal);
+			SDL_free(video->physpal->colors);
+			SDL_free(video->physpal);
 			video->physpal = NULL;
 		}
 		if ( video->gammacols ) {
-			free(video->gammacols);
+			SDL_free(video->gammacols);
 			video->gammacols = NULL;
 		}
 		if ( video->gamma ) {
-			free(video->gamma);
+			SDL_free(video->gamma);
 			video->gamma = NULL;
 		}
 		if ( video->wm_title != NULL ) {
-			free(video->wm_title);
+			SDL_free(video->wm_title);
 			video->wm_title = NULL;
 		}
 		if ( video->wm_icon != NULL ) {
-			free(video->wm_icon);
+			SDL_free(video->wm_icon);
 			video->wm_icon = NULL;
 		}
 
@@ -1459,6 +1484,12 @@ int SDL_GL_SetAttribute( SDL_GLattr attr, int value )
 		case SDL_GL_MULTISAMPLESAMPLES:
 			video->gl_config.multisamplesamples = value;
 			break;
+		case SDL_GL_ACCELERATED_VISUAL:
+			video->gl_config.accelerated = value;
+			break;
+		case SDL_GL_SWAP_CONTROL:
+			video->gl_config.swap_control = value;
+			break;
 		default:
 			SDL_SetError("Unknown OpenGL attribute");
 			retval = -1;
@@ -1507,7 +1538,7 @@ void SDL_GL_UpdateRectsLock(SDL_VideoDevice* this, int numrects, SDL_Rect *rects
 /* Update rects without state setting and changing (the caller is responsible for it) */
 void SDL_GL_UpdateRects(int numrects, SDL_Rect *rects)
 {
-#ifdef HAVE_OPENGL
+#if SDL_VIDEO_OPENGL
 	SDL_VideoDevice *this = current_video;
 	SDL_Rect update, tmp;
 	int x, y, i;
@@ -1581,7 +1612,7 @@ void SDL_GL_UpdateRects(int numrects, SDL_Rect *rects)
 /* Lock == save current state */
 void SDL_GL_Lock()
 {
-#ifdef HAVE_OPENGL
+#if SDL_VIDEO_OPENGL
 	lock_count--;
 	if (lock_count==-1)
 	{
@@ -1629,7 +1660,7 @@ void SDL_GL_Lock()
 /* Unlock == restore saved state */
 void SDL_GL_Unlock()
 {
-#ifdef HAVE_OPENGL
+#if SDL_VIDEO_OPENGL
 	lock_count++;
 	if (lock_count==0)
 	{
@@ -1656,21 +1687,15 @@ void SDL_WM_SetCaption (const char *title, const char *icon)
 	if ( video ) {
 		if ( title ) {
 			if ( video->wm_title ) {
-				free(video->wm_title);
+				SDL_free(video->wm_title);
 			}
-			video->wm_title = (char *)malloc(strlen(title)+1);
-			if ( video->wm_title != NULL ) {
-				strcpy(video->wm_title, title);
-			}
+			video->wm_title = SDL_strdup(title);
 		}
 		if ( icon ) {
 			if ( video->wm_icon ) {
-				free(video->wm_icon);
+				SDL_free(video->wm_icon);
 			}
-			video->wm_icon = (char *)malloc(strlen(icon)+1);
-			if ( video->wm_icon != NULL ) {
-				strcpy(video->wm_icon, icon);
-			}
+			video->wm_icon = SDL_strdup(icon);
 		}
 		if ( (title || icon) && (video->SetCaption != NULL) ) {
 			video->SetCaption(this, video->wm_title,video->wm_icon);
@@ -1761,18 +1786,18 @@ void SDL_WM_SetIcon (SDL_Surface *icon, Uint8 *mask)
 		if ( mask == NULL ) {
 			int mask_len = icon->h*(icon->w+7)/8;
 			int flags = 0;
-			mask = (Uint8 *)malloc(mask_len);
+			mask = (Uint8 *)SDL_malloc(mask_len);
 			if ( mask == NULL ) {
 				return;
 			}
-			memset(mask, ~0, mask_len);
+			SDL_memset(mask, ~0, mask_len);
 			if ( icon->flags & SDL_SRCCOLORKEY ) flags |= 1;
 			if ( icon->flags & SDL_SRCALPHA ) flags |= 2;
 			if( flags ) {
 				CreateMaskFromColorKeyOrAlpha(icon, mask, flags);
 			}
 			video->SetIcon(video, icon, mask);
-			free(mask);
+			SDL_free(mask);
 		} else {
 			video->SetIcon(this, icon, mask);
 		}
