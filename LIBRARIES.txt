@@ -92,8 +92,8 @@ FTGL:
 	Homepage: http://www.freetype.org/download.html#stable (latest 2.2.1)
 
 boost:
-	Version: 1.3.3_1
-	Link: http://sourceforge.net/project/showfiles.php?group_id=7586 (latest 1.3.3_1)
+	Version: 1.47.0
+	http://sourceforge.net/projects/boost/files/boost/1.47.0/
 	Download: Source Archive and just extract required headers.
 	Homepage: http://www.boost.org
 	
