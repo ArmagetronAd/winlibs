@@ -1,394 +1,168 @@
-<?xml version="1.0"?>
-<!DOCTYPE CodeBlocks_project_file>
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <CodeBlocks_project_file>
-	<FileVersion major="1" minor="1"/>
+	<FileVersion major="1" minor="6" />
 	<Project>
-		<Option title="libprotobuf"/>
-		<Option makefile="Makefile"/>
-		<Option makefile_is_custom="0"/>
-		<Option default_target="-1"/>
-		<Option compiler="0"/>
+		<Option title="libprotobuf" />
+		<Option pch_mode="0" />
+		<Option compiler="gcc" />
 		<Build>
 			<Target title="Debug">
-				<Option output="libprotobuf_debug.a"/>
-				<Option working_dir=""/>
-				<Option object_output="Debug"/>
-				<Option deps_output=".deps"/>
-				<Option type="2"/>
-				<Option compiler="0"/>
-				<Option createDefFile="1"/>
-				<Option projectResourceIncludeDirsRelation="2"/>
+				<Option output="libprotobuf_debug.a" prefix_auto="0" extension_auto="0" />
+				<Option working_dir="" />
+				<Option object_output="Debug" />
+				<Option type="2" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
-					<Add option="-DWIN32"/>
-					<Add option="-D_DEBUG"/>
-					<Add option="-D_WINDOWS"/>
-					<Add option="-D_USRDLL"/>
-					<Add option="-DLIBPROTOBUF_EXPORTS"/>
-					<Add option="-W"/>
-					<Add option="-O0"/>
-					<Add directory="..\src"/>
-					<Add directory="."/>
+					<Add option="-DWIN32" />
+					<Add option="-D_DEBUG" />
+					<Add option="-D_WINDOWS" />
+					<Add option="-D_USRDLL" />
+					<Add option="-DLIBPROTOBUF_EXPORTS" />
+					<Add option="-W" />
+					<Add option="-O0" />
+					<Add directory="..\src" />
+					<Add directory="." />
 				</Compiler>
 			</Target>
 			<Target title="Release">
-				<Option output="libprotobuf.a"/>
-				<Option working_dir=""/>
-				<Option object_output="Release"/>
-				<Option deps_output=".deps"/>
-				<Option type="2"/>
-				<Option compiler="0"/>
-				<Option createDefFile="1"/>
-				<Option projectResourceIncludeDirsRelation="2"/>
+				<Option output="libprotobuf.a" prefix_auto="0" extension_auto="0" />
+				<Option working_dir="" />
+				<Option object_output="Release" />
+				<Option type="2" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
-					<Add option="-DWIN32"/>
-					<Add option="-DNDEBUG"/>
-					<Add option="-D_WINDOWS"/>
-					<Add option="-D_USRDLL"/>
-					<Add option="-DLIBPROTOBUF_EXPORTS"/>
-					<Add option="-W"/>
-					<Add option="-g"/>
-					<Add directory="..\src"/>
-					<Add directory="."/>
+					<Add option="-DWIN32" />
+					<Add option="-DNDEBUG" />
+					<Add option="-D_WINDOWS" />
+					<Add option="-D_USRDLL" />
+					<Add option="-DLIBPROTOBUF_EXPORTS" />
+					<Add option="-W" />
+					<Add option="-g" />
+					<Add directory="..\src" />
+					<Add directory="." />
 				</Compiler>
 			</Target>
 		</Build>
+		<VirtualTargets>
+			<Add alias="All" targets="Debug;Release;" />
+		</VirtualTargets>
 		<Unit filename="..\src\google\protobuf\compiler\importer.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\compiler\importer.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\compiler\importer.h" />
 		<Unit filename="..\src\google\protobuf\compiler\parser.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\compiler\parser.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\compiler\parser.h" />
 		<Unit filename="..\src\google\protobuf\descriptor.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\descriptor.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\descriptor.h" />
 		<Unit filename="..\src\google\protobuf\descriptor.pb.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\descriptor.pb.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\descriptor.pb.h" />
 		<Unit filename="..\src\google\protobuf\descriptor_database.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\descriptor_database.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\descriptor_database.h" />
 		<Unit filename="..\src\google\protobuf\dynamic_message.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\dynamic_message.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\dynamic_message.h" />
 		<Unit filename="..\src\google\protobuf\extension_set.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\extension_set.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\extension_set.h" />
 		<Unit filename="..\src\google\protobuf\generated_message_reflection.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\generated_message_reflection.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\generated_message_reflection.h" />
 		<Unit filename="..\src\google\protobuf\io\coded_stream.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\io\coded_stream.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\io\coded_stream.h" />
 		<Unit filename="..\src\google\protobuf\io\printer.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\io\printer.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\io\printer.h" />
 		<Unit filename="..\src\google\protobuf\io\tokenizer.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\io\tokenizer.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\io\tokenizer.h" />
 		<Unit filename="..\src\google\protobuf\io\zero_copy_stream.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\io\zero_copy_stream.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\io\zero_copy_stream.h" />
 		<Unit filename="..\src\google\protobuf\io\zero_copy_stream_impl.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\io\zero_copy_stream_impl.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\io\zero_copy_stream_impl.h" />
 		<Unit filename="..\src\google\protobuf\message.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\message.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\message.h" />
 		<Unit filename="..\src\google\protobuf\reflection_ops.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\reflection_ops.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\reflection_ops.h" />
 		<Unit filename="..\src\google\protobuf\repeated_field.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\repeated_field.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\repeated_field.h" />
 		<Unit filename="..\src\google\protobuf\service.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\service.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\service.h" />
 		<Unit filename="..\src\google\protobuf\stubs\common.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\stubs\common.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\stubs\common.h" />
 		<Unit filename="..\src\google\protobuf\stubs\hash.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\stubs\hash.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\stubs\hash.h" />
 		<Unit filename="..\src\google\protobuf\stubs\map-util.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\stubs\map-util.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
-		<Unit filename="..\src\google\protobuf\stubs\scoped_memory_log.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\stubs\map-util.h" />
+		<Unit filename="..\src\google\protobuf\stubs\scoped_memory_log.h" />
 		<Unit filename="..\src\google\protobuf\stubs\stl_util-inl.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\stubs\stl_util-inl.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\stubs\stl_util-inl.h" />
 		<Unit filename="..\src\google\protobuf\stubs\structurally_valid.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="..\src\google\protobuf\stubs\strutil.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\stubs\strutil.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\stubs\strutil.h" />
 		<Unit filename="..\src\google\protobuf\stubs\substitute.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\stubs\substitute.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\stubs\substitute.h" />
 		<Unit filename="..\src\google\protobuf\text_format.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\text_format.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\text_format.h" />
 		<Unit filename="..\src\google\protobuf\unknown_field_set.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\unknown_field_set.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\unknown_field_set.h" />
 		<Unit filename="..\src\google\protobuf\wire_format.cc">
-			<Option compilerVar="CC"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\src\google\protobuf\wire_format.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
-		<Unit filename="..\src\google\protobuf\wire_format_inl.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
-		<Unit filename="config.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Debug"/>
-			<Option target="Release"/>
-		</Unit>
+		<Unit filename="..\src\google\protobuf\wire_format.h" />
+		<Unit filename="..\src\google\protobuf\wire_format_inl.h" />
+		<Unit filename="config.h" />
+		<Extensions>
+			<code_completion />
+			<debugger />
+		</Extensions>
 	</Project>
 </CodeBlocks_project_file>

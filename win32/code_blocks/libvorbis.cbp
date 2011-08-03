@@ -1,305 +1,141 @@
-<?xml version="1.0"?>
-<!DOCTYPE CodeBlocks_project_file>
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <CodeBlocks_project_file>
-	<FileVersion major="1" minor="1"/>
+	<FileVersion major="1" minor="6" />
 	<Project>
-		<Option title="libvorbis"/>
-		<Option makefile="Makefile"/>
-		<Option makefile_is_custom="0"/>
-		<Option default_target="-1"/>
-		<Option compiler="0"/>
+		<Option title="libvorbis" />
+		<Option pch_mode="0" />
+		<Option compiler="gcc" />
 		<Build>
 			<Target title="Win32 Release">
-				<Option output="..\..\build\dist\vorbis.dll"/>
-				<Option working_dir="..\..\build\dist"/>
-				<Option object_output="..\..\build\tmp\libvorbis___Win32_Release"/>
-				<Option deps_output=".deps"/>
-				<Option type="3"/>
-				<Option compiler="0"/>
-				<Option createDefFile="1"/>
-				<Option createStaticLib="1"/>
+				<Option output="..\..\build\dist\vorbis.dll" prefix_auto="0" extension_auto="0" />
+				<Option working_dir="..\..\build\dist" />
+				<Option object_output="..\..\build\tmp\libvorbis___Win32_Release" />
+				<Option type="3" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Compiler>
-					<Add option="-O2"/>
-					<Add option="-W"/>
-					<Add option="-DNDEBUG"/>
+					<Add option="-O2" />
+					<Add option="-W" />
+					<Add option="-DNDEBUG" />
 				</Compiler>
 				<Linker>
-					<Add library="..\..\build\dist\libogg.a"/>
+					<Add library="..\..\build\dist\ogg.dll" />
 				</Linker>
 			</Target>
 			<Target title="Win32 Debug">
-				<Option output="..\..\build\debug\vorbis.dll"/>
-				<Option working_dir="..\..\build\debug"/>
-				<Option object_output="..\..\build\tmp\libvorbis___Win32_Debug"/>
-				<Option deps_output=".deps"/>
-				<Option type="3"/>
-				<Option compiler="0"/>
-				<Option createDefFile="1"/>
-				<Option createStaticLib="1"/>
+				<Option output="..\..\build\debug\vorbis.dll" prefix_auto="0" extension_auto="0" />
+				<Option working_dir="..\..\build\debug" />
+				<Option object_output="..\..\build\tmp\libvorbis___Win32_Debug" />
+				<Option type="3" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+				<Option createStaticLib="1" />
 				<Compiler>
-					<Add option="-W"/>
-					<Add option="-g"/>
-					<Add option="-D_DEBUG"/>
+					<Add option="-g" />
+					<Add option="-W" />
+					<Add option="-D_DEBUG" />
 				</Compiler>
 				<Linker>
-					<Add library="..\..\build\debug\libogg.a"/>
+					<Add library="..\..\build\debug\ogg.dll" />
 				</Linker>
 			</Target>
 		</Build>
+		<VirtualTargets>
+			<Add alias="All" targets="Win32 Release;Win32 Debug;" />
+		</VirtualTargets>
 		<Compiler>
-			<Add option="-fexceptions"/>
-			<Add option="-DWIN32"/>
-			<Add option="-D_MBCS"/>
-			<Add option="-DLIBVORBIS_EXPORTS"/>
-			<Add directory="..\..\libvorbis\include"/>
-			<Add directory="..\..\libogg\include"/>
+			<Add option="-fexceptions" />
+			<Add option="-DWIN32" />
+			<Add option="-D_MBCS" />
+			<Add option="-DLIBVORBIS_EXPORTS" />
+			<Add directory="..\..\libvorbis\include" />
+			<Add directory="..\..\libogg\include" />
 		</Compiler>
-		<Unit filename="..\..\libvorbis\include\vorbis\backends.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
-		<Unit filename="..\..\libvorbis\include\vorbis\codebook.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
-		<Unit filename="..\..\libvorbis\include\vorbis\codec.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\include\vorbis\backends.h" />
+		<Unit filename="..\..\libvorbis\include\vorbis\codebook.h" />
+		<Unit filename="..\..\libvorbis\include\vorbis\codec.h" />
 		<Unit filename="..\..\libvorbis\lib\analysis.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\bitbuffer.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\bitbuffer.h" />
 		<Unit filename="..\..\libvorbis\lib\bitrate.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\bitrate.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\bitrate.h" />
 		<Unit filename="..\..\libvorbis\lib\block.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="..\..\libvorbis\lib\codebook.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\codec_internal.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\codec_internal.h" />
 		<Unit filename="..\..\libvorbis\lib\envelope.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\envelope.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\envelope.h" />
 		<Unit filename="..\..\libvorbis\lib\floor0.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="..\..\libvorbis\lib\floor1.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\highlevel.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\highlevel.h" />
 		<Unit filename="..\..\libvorbis\lib\info.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="..\..\libvorbis\lib\lookup.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\lookup.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
-		<Unit filename="..\..\libvorbis\lib\lookup_data.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\lookup.h" />
+		<Unit filename="..\..\libvorbis\lib\lookup_data.h" />
 		<Unit filename="..\..\libvorbis\lib\lpc.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\lpc.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\lpc.h" />
 		<Unit filename="..\..\libvorbis\lib\lsp.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\lsp.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\lsp.h" />
 		<Unit filename="..\..\libvorbis\lib\mapping0.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\masking.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\masking.h" />
 		<Unit filename="..\..\libvorbis\lib\mdct.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\mdct.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
-		<Unit filename="..\..\libvorbis\lib\misc.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
-		<Unit filename="..\..\libvorbis\lib\os.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\mdct.h" />
+		<Unit filename="..\..\libvorbis\lib\misc.h" />
+		<Unit filename="..\..\libvorbis\lib\os.h" />
 		<Unit filename="..\..\libvorbis\lib\psy.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\psy.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\psy.h" />
 		<Unit filename="..\..\libvorbis\lib\registry.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\registry.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\registry.h" />
 		<Unit filename="..\..\libvorbis\lib\res0.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\scales.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\scales.h" />
 		<Unit filename="..\..\libvorbis\lib\sharedbook.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="..\..\libvorbis\lib\smallft.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\smallft.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\smallft.h" />
 		<Unit filename="..\..\libvorbis\lib\synthesis.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="..\..\libvorbis\lib\window.c">
-			<Option compilerVar="CC"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
+			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="..\..\libvorbis\lib\window.h">
-			<Option compilerVar=""/>
-			<Option compile="0"/>
-			<Option link="0"/>
-			<Option target="Win32 Release"/>
-			<Option target="Win32 Debug"/>
-		</Unit>
+		<Unit filename="..\..\libvorbis\lib\window.h" />
+		<Extensions>
+			<code_completion />
+			<debugger />
+		</Extensions>
 	</Project>
 </CodeBlocks_project_file>
