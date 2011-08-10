@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="ZThread" />
+		<Option pch_mode="0" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="release">
+				<Option output="..\..\build\dist\libZThread.a" prefix_auto="0" extension_auto="0" />
+				<Option working_dir="" />
+				<Option object_output="..\..\build\tmp\ZThread_win32_release" />
+				<Option deps_output=".deps_release" />
+				<Option type="2" />
+				<Option compiler="gcc" />
+				<Option projectResourceIncludeDirsRelation="2" />
+				<Compiler>
+					<Add option="-O2" />
+					<Add option="-DNDEBUG" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+			<Target title="debug">
+				<Option output="..\..\build\debug\libZThread.a" prefix_auto="0" extension_auto="0" />
+				<Option working_dir="" />
+				<Option object_output="..\..\build\tmp\ZThread_win32_debug" />
+				<Option type="2" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+				<Option projectResourceIncludeDirsRelation="2" />
+				<Compiler>
+					<Add option="-g" />
+				</Compiler>
+			</Target>
+		</Build>
+		<VirtualTargets>
+			<Add alias="All" targets="release;debug;" />
+		</VirtualTargets>
+		<Compiler>
+			<Add directory="..\..\..\winlibs\ZThread\include" />
+		</Compiler>
+		<Unit filename="..\..\ZThread\src\AtomicCount.cxx" />
+		<Unit filename="..\..\ZThread\src\ConcurrentExecutor.cxx" />
+		<Unit filename="..\..\ZThread\src\Condition.cxx" />
+		<Unit filename="..\..\ZThread\src\ConditionImpl.h" />
+		<Unit filename="..\..\ZThread\src\CountingSemaphore.cxx" />
+		<Unit filename="..\..\ZThread\src\Debug.h" />
+		<Unit filename="..\..\ZThread\src\DeferredInterruptionScope.h" />
+		<Unit filename="..\..\ZThread\src\FastLock.h" />
+		<Unit filename="..\..\ZThread\src\FastMutex.cxx" />
+		<Unit filename="..\..\ZThread\src\FastRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\FastRecursiveMutex.cxx" />
+		<Unit filename="..\..\ZThread\src\IntrusivePtr.h" />
+		<Unit filename="..\..\..\winlibs\ZThread\src\Makefile.am" />
+		<Unit filename="..\..\..\winlibs\ZThread\src\Makefile.in" />
+		<Unit filename="..\..\ZThread\src\Monitor.cxx" />
+		<Unit filename="..\..\ZThread\src\Monitor.h" />
+		<Unit filename="..\..\ZThread\src\Mutex.cxx" />
+		<Unit filename="..\..\ZThread\src\MutexImpl.h" />
+		<Unit filename="..\..\ZThread\src\PoolExecutor.cxx" />
+		<Unit filename="..\..\ZThread\src\PriorityCondition.cxx" />
+		<Unit filename="..\..\ZThread\src\PriorityInheritanceMutex.cxx" />
+		<Unit filename="..\..\ZThread\src\PriorityMutex.cxx" />
+		<Unit filename="..\..\ZThread\src\PrioritySemaphore.cxx" />
+		<Unit filename="..\..\ZThread\src\RecursiveMutex.cxx" />
+		<Unit filename="..\..\ZThread\src\RecursiveMutexImpl.cxx" />
+		<Unit filename="..\..\ZThread\src\RecursiveMutexImpl.h" />
+		<Unit filename="..\..\ZThread\src\Scheduling.h" />
+		<Unit filename="..\..\ZThread\src\Semaphore.cxx" />
+		<Unit filename="..\..\ZThread\src\SemaphoreImpl.h" />
+		<Unit filename="..\..\ZThread\src\State.h" />
+		<Unit filename="..\..\ZThread\src\Status.h" />
+		<Unit filename="..\..\ZThread\src\SynchronousExecutor.cxx" />
+		<Unit filename="..\..\ZThread\src\TSS.h" />
+		<Unit filename="..\..\ZThread\src\Thread.cxx" />
+		<Unit filename="..\..\ZThread\src\ThreadImpl.cxx" />
+		<Unit filename="..\..\ZThread\src\ThreadImpl.h" />
+		<Unit filename="..\..\ZThread\src\ThreadLocalImpl.cxx" />
+		<Unit filename="..\..\ZThread\src\ThreadOps.cxx" />
+		<Unit filename="..\..\ZThread\src\ThreadOps.h" />
+		<Unit filename="..\..\ZThread\src\ThreadQueue.cxx" />
+		<Unit filename="..\..\ZThread\src\ThreadQueue.h" />
+		<Unit filename="..\..\ZThread\src\ThreadedExecutor.cxx" />
+		<Unit filename="..\..\ZThread\src\Time.cxx" />
+		<Unit filename="..\..\ZThread\src\TimeStrategy.h" />
+		<Unit filename="..\..\ZThread\src\config.h" />
+		<Unit filename="..\..\..\winlibs\ZThread\src\config.h.in" />
+		<Unit filename="..\..\ZThread\src\linux\AtomicFastLock.h" />
+		<Unit filename="..\..\ZThread\src\linux\FastRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\macos\FastLock.h" />
+		<Unit filename="..\..\ZThread\src\macos\Monitor.h" />
+		<Unit filename="..\..\ZThread\src\macos\TSS.h" />
+		<Unit filename="..\..\ZThread\src\macos\ThreadOps.h" />
+		<Unit filename="..\..\ZThread\src\macos\UpTimeStrategy.h" />
+		<Unit filename="..\..\ZThread\src\posix\ConditionRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\posix\FastLock.h" />
+		<Unit filename="..\..\ZThread\src\posix\FtimeStrategy.h" />
+		<Unit filename="..\..\ZThread\src\posix\GetTimeOfDayStrategy.h" />
+		<Unit filename="..\..\ZThread\src\posix\Monitor.h" />
+		<Unit filename="..\..\ZThread\src\posix\PriorityOps.h" />
+		<Unit filename="..\..\ZThread\src\posix\TSS.h" />
+		<Unit filename="..\..\ZThread\src\posix\ThreadOps.h" />
+		<Unit filename="..\..\ZThread\src\solaris\FastRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\vanilla\DualMutexRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\vanilla\SimpleRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\win32\AtomicFastLock.h" />
+		<Unit filename="..\..\ZThread\src\win32\AtomicFastRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\win32\FastLock.h" />
+		<Unit filename="..\..\ZThread\src\win32\FastRecursiveLock.h" />
+		<Unit filename="..\..\ZThread\src\win32\Monitor.h" />
+		<Unit filename="..\..\ZThread\src\win32\PerformanceCounterStrategy.h" />
+		<Unit filename="..\..\ZThread\src\win32\TSS.h" />
+		<Unit filename="..\..\ZThread\src\win32\ThreadOps.h" />
+		<Unit filename="..\..\ZThread\src\win9x\AtomicFastLock.h" />
+		<Extensions>
+			<code_completion />
+			<debugger />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>

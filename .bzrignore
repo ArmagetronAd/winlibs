@@ -3,3 +3,4 @@ protobuf/vsprojects/Debug
 protobuf/vsprojects/Release
 *.depend
 *.layout
+*.backup
