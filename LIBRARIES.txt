@@ -96,5 +96,14 @@ boost:
 	http://sourceforge.net/projects/boost/files/boost/1.47.0/
 	Download: Source Archive and just extract required headers.
 	Homepage: http://www.boost.org
+
+	The libraries in win32/boost_libraries are build from the full source using bjam;
+        to rebuild them, you need to have code::blocks' mingw32/bin directory in your path so
+        the compiler can be found, then you need to call "build.bat gcc" in the directory
+        tools\build\v2\engine, copy the resulting tools\build\v2\engine\bin.ntx86\bjam.exe into
+        your path, then call
+        bjam toolset=gcc link=static --with-thread
+        from the top boost directory. Libraries can then be copied from stage\lib.
+        
 	
 http://wiki.codeblocks.org/index.php?title=FAQ#Q:_How_can_I_use_a_DLL_without_DEF_or_LIB_files_.3F
