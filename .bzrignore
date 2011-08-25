@@ -4,3 +4,4 @@ protobuf/vsprojects/Release
 *.depend
 *.layout
 *.backup
+*.cbTemp
