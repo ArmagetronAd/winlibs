@@ -8,8 +8,9 @@
 		<Option compiler="gcc" />
 		<Build>
 			<Target title="Win32 Release">
-				<Option output="..\Build\ftgl" prefix_auto="1" extension_auto="1" />
-				<Option object_output=".\Release" />
+				<Option output="..\..\build\dist\ftgl" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="..\..\build\dist" />
+				<Option object_output="..\..\build\tmp\FTGL_Release" />
 				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option createDefFile="1" />
@@ -22,9 +23,6 @@
 					<Add option="-D_WINDOWS" />
 					<Add option="-D_USRDLL" />
 					<Add option="-DFTGL_LIBRARY" />
-					<Add directory="$(FREETYPE)\include" />
-					<Add directory="..\..\src" />
-					<Add directory="..\" />
 				</Compiler>
 				<ResourceCompiler>
 					<Add directory="$(FREETYPE)\include" />
@@ -37,12 +35,12 @@
 					<Add library="opengl32" />
 					<Add library="glu32" />
 					<Add library="freetype248" />
-					<Add directory="$(FREETYPE)\objs" />
 				</Linker>
 			</Target>
 			<Target title="Win32 Debug">
-				<Option output="..\Build\ftgl_D" prefix_auto="1" extension_auto="1" />
-				<Option object_output=".\Debug" />
+				<Option output="..\..\build\debug\ftgl" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="..\..\build\debug" />
+				<Option object_output="..\..\build\debug\FTGL_Debug" />
 				<Option type="3" />
 				<Option compiler="gcc" />
 				<Option createDefFile="1" />
@@ -56,9 +54,6 @@
 					<Add option="-D_WINDOWS" />
 					<Add option="-D_USRDLL" />
 					<Add option="-DFTGL_LIBRARY" />
-					<Add directory="$(FREETYPE)\include" />
-					<Add directory="..\..\src" />
-					<Add directory="..\" />
 				</Compiler>
 				<ResourceCompiler>
 					<Add directory="$(FREETYPE)\include" />
@@ -71,13 +66,21 @@
 					<Add library="opengl32" />
 					<Add library="glu32" />
 					<Add library="freetype248_D" />
-					<Add directory="$(FREETYPE)\objs" />
 				</Linker>
 			</Target>
 			<Environment>
-				<Variable name="FREETYPE" value="D:\Development\AADevel\liquid\winlibs\FTGL\win32\freetype" />
+				<Variable name="FREETYPE" value="..\..\FTGL\win32\freetype" />
 			</Environment>
 		</Build>
+		<Compiler>
+			<Add directory="$(FREETYPE)\include" />
+			<Add directory="..\..\FTGL\src" />
+			<Add directory="..\..\FTGL" />
+			<Add directory="..\..\FTGL\msvc" />
+		</Compiler>
+		<Linker>
+			<Add directory="$(FREETYPE)\objs" />
+		</Linker>
 		<Unit filename="..\..\src\FTBuffer.cpp" />
 		<Unit filename="..\..\src\FTCharmap.cpp" />
 		<Unit filename="..\..\src\FTCharmap.h" />
