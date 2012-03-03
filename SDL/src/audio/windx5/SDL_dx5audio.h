@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -37,7 +37,7 @@ struct SDL_PrivateAudioData {
 	LPDIRECTSOUNDBUFFER mixbuf;
 	int NUM_BUFFERS;
 	int mixlen, silence;
-	DWORD playing;
+	DWORD lastchunk;
 	Uint8 *locked_buf;
 	HANDLE audio_event;
 };
@@ -48,7 +48,7 @@ struct SDL_PrivateAudioData {
 #define NUM_BUFFERS		(this->hidden->NUM_BUFFERS)
 #define mixlen			(this->hidden->mixlen)
 #define silence			(this->hidden->silence)
-#define playing			(this->hidden->playing)
+#define lastchunk		(this->hidden->lastchunk)
 #define locked_buf		(this->hidden->locked_buf)
 #define audio_event		(this->hidden->audio_event)
 

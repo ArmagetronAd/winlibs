@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is SDL_free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -103,12 +103,15 @@ typedef struct AudioBootStrap {
 #if SDL_AUDIO_DRIVER_BSD
 extern AudioBootStrap BSD_AUDIO_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_OSS
-extern AudioBootStrap DSP_bootstrap;
-extern AudioBootStrap DMA_bootstrap;
+#if SDL_AUDIO_DRIVER_PULSE
+extern AudioBootStrap PULSE_bootstrap;
 #endif
 #if SDL_AUDIO_DRIVER_ALSA
 extern AudioBootStrap ALSA_bootstrap;
+#endif
+#if SDL_AUDIO_DRIVER_OSS
+extern AudioBootStrap DSP_bootstrap;
+extern AudioBootStrap DMA_bootstrap;
 #endif
 #if SDL_AUDIO_DRIVER_QNXNTO
 extern AudioBootStrap QNXNTOAUDIO_bootstrap;
@@ -146,9 +149,6 @@ extern AudioBootStrap COREAUDIO_bootstrap;
 #if SDL_AUDIO_DRIVER_SNDMGR
 extern AudioBootStrap SNDMGR_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_AHI
-extern AudioBootStrap AHI_bootstrap;
-#endif
 #if SDL_AUDIO_DRIVER_MINT
 extern AudioBootStrap MINTAUDIO_GSXB_bootstrap;
 extern AudioBootStrap MINTAUDIO_MCSN_bootstrap;
@@ -165,11 +165,17 @@ extern AudioBootStrap DUMMYAUD_bootstrap;
 #if SDL_AUDIO_DRIVER_DC
 extern AudioBootStrap DCAUD_bootstrap;
 #endif
+#if SDL_AUDIO_DRIVER_NDS
+extern AudioBootStrap NDSAUD_bootstrap;
+#endif
 #if SDL_AUDIO_DRIVER_MMEAUDIO
 extern AudioBootStrap MMEAUDIO_bootstrap;
 #endif
 #if SDL_AUDIO_DRIVER_DART
 extern AudioBootStrap DART_bootstrap;
+#endif
+#if SDL_AUDIO_DRIVER_EPOCAUDIO
+extern AudioBootStrap EPOCAudio_bootstrap; 
 #endif
 
 /* This is the current audio device */

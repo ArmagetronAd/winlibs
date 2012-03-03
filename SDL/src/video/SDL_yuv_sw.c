@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -27,17 +27,17 @@
 
  * Copyright (c) 1995 The Regents of the University of California.
  * All rights reserved.
- * 
+ *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation for any purpose, without fee, and without written agreement is
  * hereby granted, provided that the above copyright notice and the following
  * two paragraphs appear in all copies of this software.
- * 
+ *
  * IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY PARTY FOR
  * DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES ARISING OUT
  * OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF THE UNIVERSITY OF
  * CALIFORNIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * THE UNIVERSITY OF CALIFORNIA SPECIFICALLY DISCLAIMS ANY WARRANTIES,
  * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
  * AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
@@ -46,17 +46,17 @@
 
  * Copyright (c) 1995 Erik Corry
  * All rights reserved.
- * 
+ *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation for any purpose, without fee, and without written agreement is
  * hereby granted, provided that the above copyright notice and the following
  * two paragraphs appear in all copies of this software.
- * 
+ *
  * IN NO EVENT SHALL ERIK CORRY BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT,
  * SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OF
  * THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF ERIK CORRY HAS BEEN ADVISED
  * OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * ERIK CORRY SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
  * PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS ON AN "AS IS"
@@ -65,17 +65,17 @@
 
  * Portions of this software Copyright (c) 1995 Brown University.
  * All rights reserved.
- * 
+ *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation for any purpose, without fee, and without written agreement
  * is hereby granted, provided that the above copyright notice and the
  * following two paragraphs appear in all copies of this software.
- * 
+ *
  * IN NO EVENT SHALL BROWN UNIVERSITY BE LIABLE TO ANY PARTY FOR
  * DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES ARISING OUT
  * OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF BROWN
  * UNIVERSITY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * BROWN UNIVERSITY SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
  * PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS ON AN "AS IS"
@@ -121,7 +121,7 @@ struct private_yuvhwdata {
 
 /* The colorspace conversion functions */
 
-#if 0 /*defined(__GNUC__) && defined(__i386__) && SDL_ASSEMBLY_ROUTINES*/
+#if (__GNUC__ > 2) && defined(__i386__) && __OPTIMIZE__ && SDL_ASSEMBLY_ROUTINES
 extern void Color565DitherYV12MMX1X( int *colortab, Uint32 *rgb_2_pix,
                                      unsigned char *lum, unsigned char *cr,
                                      unsigned char *cb, unsigned char *out,
@@ -130,7 +130,7 @@ extern void ColorRGBDitherYV12MMX1X( int *colortab, Uint32 *rgb_2_pix,
                                      unsigned char *lum, unsigned char *cr,
                                      unsigned char *cb, unsigned char *out,
                                      int rows, int cols, int mod );
-#endif 
+#endif
 
 static void Color16DitherYV12Mod1X( int *colortab, Uint32 *rgb_2_pix,
                                     unsigned char *lum, unsigned char *cr,
@@ -1009,11 +1009,11 @@ SDL_Overlay *SDL_CreateYUV_SW(_THIS, int width, int height, Uint32 format, SDL_S
 		CB = CR = (i-128);
 		Cr_r_tab[i] = (int) ( (0.419/0.299) * CR);
 		Cr_g_tab[i] = (int) (-(0.299/0.419) * CR);
-		Cb_g_tab[i] = (int) (-(0.114/0.331) * CB); 
+		Cb_g_tab[i] = (int) (-(0.114/0.331) * CB);
 		Cb_b_tab[i] = (int) ( (0.587/0.331) * CB);
 	}
 
-	/* 
+	/*
 	 * Set up entries 0-255 in rgb-to-pixel value tables.
 	 */
 	Rmask = display->format->Rmask;
@@ -1031,7 +1031,7 @@ SDL_Overlay *SDL_CreateYUV_SW(_THIS, int width, int height, Uint32 format, SDL_S
 	/*
 	 * If we have 16-bit output depth, then we double the value
 	 * in the top word. This means that we can write out both
-	 * pixels in the pixel doubling mode with one op. It is 
+	 * pixels in the pixel doubling mode with one op. It is
 	 * harmless in the normal case as storing a 32-bit value
 	 * through a short pointer will lose the top bits anyway.
 	 */
@@ -1061,7 +1061,7 @@ SDL_Overlay *SDL_CreateYUV_SW(_THIS, int width, int height, Uint32 format, SDL_S
 	    case SDL_YV12_OVERLAY:
 	    case SDL_IYUV_OVERLAY:
 		if ( display->format->BytesPerPixel == 2 ) {
-#if 0 /*defined(__GNUC__) && defined(__i386__) && SDL_ASSEMBLY_ROUTINES*/
+#if (__GNUC__ > 2) && defined(__i386__) && __OPTIMIZE__ && SDL_ASSEMBLY_ROUTINES
 			/* inline assembly functions */
 			if ( SDL_HasMMX() && (Rmask == 0xF800) &&
 			                     (Gmask == 0x07E0) &&
@@ -1083,11 +1083,11 @@ SDL_Overlay *SDL_CreateYUV_SW(_THIS, int width, int height, Uint32 format, SDL_S
 			swdata->Display2X = Color24DitherYV12Mod2X;
 		}
 		if ( display->format->BytesPerPixel == 4 ) {
-#if 0 /*defined(__GNUC__) && defined(__i386__) && SDL_ASSEMBLY_ROUTINES*/
+#if (__GNUC__ > 2) && defined(__i386__) && __OPTIMIZE__ && SDL_ASSEMBLY_ROUTINES
 			/* inline assembly functions */
 			if ( SDL_HasMMX() && (Rmask == 0x00FF0000) &&
 			                     (Gmask == 0x0000FF00) &&
-				             (Bmask == 0x000000FF) && 
+				             (Bmask == 0x000000FF) &&
 			                     (width & 15) == 0) {
 /*printf("Using MMX 32-bit dither\n");*/
 				swdata->Display1X = ColorRGBDitherYV12MMX1X;
@@ -1294,5 +1294,6 @@ void SDL_FreeYUV_SW(_THIS, SDL_Overlay *overlay)
 			SDL_free(swdata->rgb_2_pix);
 		}
 		SDL_free(swdata);
+		overlay->hwdata = NULL;
 	}
 }

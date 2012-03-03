@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -337,7 +337,9 @@ Uint8 SDL_FindColor(SDL_Palette *pal, Uint8 r, Uint8 g, Uint8 b)
 }
 
 /* Find the opaque pixel value corresponding to an RGB triple */
-Uint32 SDL_MapRGB(SDL_PixelFormat *format, Uint8 r, Uint8 g, Uint8 b)
+Uint32 SDL_MapRGB
+(const SDL_PixelFormat * const format,
+ const Uint8 r, const Uint8 g, const Uint8 b)
 {
 	if ( format->palette == NULL ) {
 		return (r >> format->Rloss) << format->Rshift
@@ -350,7 +352,9 @@ Uint32 SDL_MapRGB(SDL_PixelFormat *format, Uint8 r, Uint8 g, Uint8 b)
 }
 
 /* Find the pixel value corresponding to an RGBA quadruple */
-Uint32 SDL_MapRGBA(SDL_PixelFormat *format, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+Uint32 SDL_MapRGBA
+(const SDL_PixelFormat * const format,
+ const Uint8 r, const Uint8 g, const Uint8 b, const Uint8 a)
 {
 	if ( format->palette == NULL ) {
 	        return (r >> format->Rloss) << format->Rshift
@@ -362,7 +366,7 @@ Uint32 SDL_MapRGBA(SDL_PixelFormat *format, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 	}
 }
 
-void SDL_GetRGBA(Uint32 pixel, SDL_PixelFormat *fmt,
+void SDL_GetRGBA(Uint32 pixel, const SDL_PixelFormat * const fmt,
 		 Uint8 *r, Uint8 *g, Uint8 *b, Uint8 *a)
 {
 	if ( fmt->palette == NULL ) {
@@ -396,7 +400,8 @@ void SDL_GetRGBA(Uint32 pixel, SDL_PixelFormat *fmt,
 	}
 }
 
-void SDL_GetRGB(Uint32 pixel, SDL_PixelFormat *fmt, Uint8 *r,Uint8 *g,Uint8 *b)
+void SDL_GetRGB(Uint32 pixel, const SDL_PixelFormat * const fmt,
+                Uint8 *r,Uint8 *g,Uint8 *b)
 {
 	if ( fmt->palette == NULL ) {
 	        /* the note for SDL_GetRGBA above applies here too */

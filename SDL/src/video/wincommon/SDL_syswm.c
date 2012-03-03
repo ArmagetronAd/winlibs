@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -40,25 +40,6 @@
 
 /* The screen icon -- needs to be freed on SDL_VideoQuit() */
 HICON   screen_icn = NULL;
-
-#ifdef _WIN32_WCE
-
-BOOL (WINAPI *CoreCatchInput)(int flag) = NULL;
-int input_catched = 0;
-HINSTANCE coredll = NULL;
-
-// the same API call that gx.dll does to catch the input
-void LoadInputCatchFunc()
-{
-	coredll = SDL_LoadObject("coredll.dll");
-	if( coredll )
-	{
-		CoreCatchInput = (int (WINAPI *)(int)) GetProcAddress(coredll, (const unsigned short *) 1453);
-	}
-}
-
-#endif
-
 
 /* Win32 icon mask semantics are different from those of SDL:
      SDL applies the mask to the icon and copies result to desktop.
@@ -226,6 +207,8 @@ void WIN_SetWMIcon(_THIS, SDL_Surface *icon, Uint8 *mask)
 #endif /* DISABLE_ICON_SUPPORT */
 }
 
+typedef BOOL (WINAPI *PtrSetWindowTextW)(HWND hWnd, LPCWSTR lpString);
+
 void WIN_SetWMCaption(_THIS, const char *title, const char *icon)
 {
 #ifdef _WIN32_WCE
@@ -234,8 +217,12 @@ void WIN_SetWMCaption(_THIS, const char *title, const char *icon)
 	SetWindowText(SDL_Window, lpszW);
 	SDL_free(lpszW);
 #else
-	char *lpsz = SDL_iconv_utf8_latin1((char *)title);
-	SetWindowText(SDL_Window, lpsz);
+	Uint16 *lpsz = SDL_iconv_utf8_ucs2(title);
+	size_t len = WideCharToMultiByte(CP_ACP, 0, lpsz, -1, NULL, 0, NULL, NULL);
+	char *cvt = SDL_stack_alloc(char, len + 1);
+	WideCharToMultiByte(CP_ACP, 0, lpsz, -1, cvt, len, NULL, NULL);
+	SetWindowText(SDL_Window, cvt);
+	SDL_stack_free(cvt);
 	SDL_free(lpsz);
 #endif
 }
@@ -263,13 +250,7 @@ SDL_GrabMode WIN_GrabInput(_THIS, SDL_GrabMode mode)
 			SetCursorPos(pt.x,pt.y);
 		}
 #ifdef _WIN32_WCE
-		if( input_catched )
-		{
-			if( !CoreCatchInput ) LoadInputCatchFunc();
-
-			if( CoreCatchInput )
-				CoreCatchInput(0);
-		}
+		AllKeys(0);
 #endif
 	} else {
 		ClipCursor(&SDL_bounds);
@@ -284,13 +265,7 @@ SDL_GrabMode WIN_GrabInput(_THIS, SDL_GrabMode mode)
 			SetCursorPos(pt.x, pt.y);
 		}
 #ifdef _WIN32_WCE
-		if( !input_catched )
-		{
-			if( !CoreCatchInput ) LoadInputCatchFunc();
-
-			if( CoreCatchInput )
-				CoreCatchInput(1);
-		}
+		AllKeys(1);
 #endif
 	}
 	return(mode);

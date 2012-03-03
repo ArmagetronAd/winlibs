@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -30,8 +30,16 @@
 #include "../../events/SDL_sysevents.h"
 #include "../../events/SDL_events_c.h"
 #include "../wincommon/SDL_lowvideo.h"
-#include "SDL_dibvideo.h"
+#include "SDL_gapidibvideo.h"
 #include "SDL_vkeys.h"
+
+#ifdef SDL_VIDEO_DRIVER_GAPI
+#include "../gapi/SDL_gapivideo.h"
+#endif
+
+#ifdef SDL_VIDEO_DRIVER_WINDIB
+#include "SDL_dibvideo.h"
+#endif
 
 #ifndef WM_APP
 #define WM_APP	0x8000
@@ -44,6 +52,7 @@
 /* The translation table from a Microsoft VK keysym to a SDL keysym */
 static SDLKey VK_keymap[SDLK_LAST];
 static SDL_keysym *TranslateKey(WPARAM vkey, UINT scancode, SDL_keysym *keysym, int pressed);
+static SDLKey Arrows_keymap[4];
 
 /* Masks for processing the windows KEYDOWN and KEYUP messages */
 #define REPEATED_KEYMASK	(1<<30)
@@ -59,27 +68,63 @@ static SDL_keysym *TranslateKey(WPARAM vkey, UINT scancode, SDL_keysym *keysym, 
 static WNDPROCTYPE userWindowProc = NULL;
 
 
-#ifdef _WIN32_WCE
+#ifdef SDL_VIDEO_DRIVER_GAPI
 
-WPARAM rotateKey(WPARAM key,SDL_ScreenOrientation direction) 
+WPARAM rotateKey(WPARAM key,int direction) 
 {
-	if (direction != SDL_ORIENTATION_LEFT)
-		return key;
-
+	if(direction ==0 ) return key;
+	
 	switch (key) {
 		case 0x26: /* up */
-			return 0x27;
+			return Arrows_keymap[(2 + direction) % 4];
 		case 0x27: /* right */
-			return 0x28;
+			return Arrows_keymap[(1 + direction) % 4];
 		case 0x28: /* down */
-			return 0x25;
+			return Arrows_keymap[direction % 4];
 		case 0x25: /* left */
-			return 0x26;
+			return Arrows_keymap[(3 + direction) % 4];
 	}
 
 	return key;
 }
 
+static void GapiTransform(GapiInfo *gapiInfo, LONG *x, LONG *y)
+{
+    if(gapiInfo->hiresFix)
+    {
+	*x *= 2;
+	*y *= 2;
+    }
+
+    // 0 3 0
+    if((!gapiInfo->userOrientation && gapiInfo->systemOrientation && !gapiInfo->gapiOrientation) ||
+    // 3 0 3
+       (gapiInfo->userOrientation && !gapiInfo->systemOrientation && gapiInfo->gapiOrientation) ||
+    // 3 0 0
+       (gapiInfo->userOrientation && !gapiInfo->systemOrientation && !gapiInfo->gapiOrientation))
+    {
+	Sint16 temp = *x;
+        *x = SDL_VideoSurface->w - *y;
+        *y = temp;
+    }
+    else
+    // 0 0 0
+    if((!gapiInfo->userOrientation && !gapiInfo->systemOrientation && !gapiInfo->gapiOrientation) ||
+    // 0 0 3
+      (!gapiInfo->userOrientation && !gapiInfo->systemOrientation && gapiInfo->gapiOrientation))
+    {
+	// without changes
+	// *x = *x;
+	// *y = *y;
+    }
+    // default
+    else
+    {
+	// without changes
+	// *x = *x;
+	// *y = *y;
+    }
+}
 #endif 
 
 
@@ -93,14 +138,15 @@ LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_KEYDOWN: {
 			SDL_keysym keysym;
 
-#ifdef _WIN32_WCE
-			// Drop GAPI artefacts
-			if (wParam == 0x84 || wParam == 0x5B)
-				return 0;
+#ifdef SDL_VIDEO_DRIVER_GAPI
+			if(this->hidden->gapiInfo)
+			{
+				// Drop GAPI artefacts
+				if (wParam == 0x84 || wParam == 0x5B)
+					return 0;
 
-			// Rotate key if necessary
-			if (this->hidden->orientation != SDL_ORIENTATION_UP)
-				wParam = rotateKey(wParam, this->hidden->orientation);	
+				wParam = rotateKey(wParam, this->hidden->gapiInfo->coordinateTransform);
+			}
 #endif 
 			/* Ignore repeated keys */
 			if ( lParam&REPEATED_KEYMASK ) {
@@ -122,8 +168,16 @@ LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 					} else if (state[SDLK_RSHIFT] == SDL_RELEASED && (GetKeyState(VK_RSHIFT) & 0x8000)) {
 						wParam = VK_RSHIFT;
 					} else {
-						/* Probably a key repeat */
-						return(0);
+						/* Win9x */
+						int sc = HIWORD(lParam) & 0xFF;
+
+						if (sc == 0x2A)
+							wParam = VK_LSHIFT;
+						else
+						if (sc == 0x36)
+							wParam = VK_RSHIFT;
+						else
+							wParam = VK_LSHIFT;
 					}
 					}
 					break;
@@ -144,7 +198,7 @@ LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 				m.wParam = wParam;
 				m.lParam = lParam;
 				m.time = 0;
-				if ( TranslateMessage(&m) && PeekMessage(&m, hwnd, 0, WM_USER, PM_NOREMOVE) && (m.message == WM_CHAR) ) {
+				if ( PeekMessage(&m, hwnd, 0, WM_USER, PM_NOREMOVE) && (m.message == WM_CHAR) ) {
 					GetMessage(&m, hwnd, 0, WM_USER);
 			    		wParam = m.wParam;
 				}
@@ -159,14 +213,15 @@ LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_KEYUP: {
 			SDL_keysym keysym;
 
-#ifdef _WIN32_WCE
-			// Drop GAPI artifacts
-			if (wParam == 0x84 || wParam == 0x5B)
-				return 0;
-
-			// Rotate key if necessary
-			if (this->hidden->orientation != SDL_ORIENTATION_UP)
-				wParam = rotateKey(wParam, this->hidden->orientation);	
+#ifdef SDL_VIDEO_DRIVER_GAPI
+			if(this->hidden->gapiInfo)
+			{
+				// Drop GAPI artifacts
+				if (wParam == 0x84 || wParam == 0x5B)
+					return 0;
+	
+				wParam = rotateKey(wParam, this->hidden->gapiInfo->coordinateTransform);
+			}
 #endif
 
 			switch (wParam) {
@@ -185,8 +240,16 @@ LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 					} else if (state[SDLK_RSHIFT] == SDL_PRESSED && !(GetKeyState(VK_RSHIFT) & 0x8000)) {
 						wParam = VK_RSHIFT;
 					} else {
-						/* Probably a key repeat */
-						return(0);
+						/* Win9x */
+						int sc = HIWORD(lParam) & 0xFF;
+
+						if (sc == 0x2A)
+							wParam = VK_LSHIFT;
+						else
+						if (sc == 0x36)
+							wParam = VK_RSHIFT;
+						else
+							wParam = VK_LSHIFT;
 					}
 					}
 					break;
@@ -206,12 +269,16 @@ LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 				TranslateKey(wParam,HIWORD(lParam),&keysym,0));
 		}
 		return(0);
-
 #if defined(SC_SCREENSAVE) && defined(SC_MONITORPOWER)
 		case WM_SYSCOMMAND: {
-			if ((wParam&0xFFF0)==SC_SCREENSAVE ||
-				(wParam&0xFFF0)==SC_MONITORPOWER)
+			const DWORD val = (DWORD) (wParam & 0xFFF0);
+			if ((val == SC_SCREENSAVE) || (val == SC_MONITORPOWER)) {
+				if (this->hidden->dibInfo && !allow_screensaver) {
+					/* Note that this doesn't stop anything on Vista
+					   if the screensaver has a password. */
 					return(0);
+				}
+			}
 		}
 		/* Fall through to default processing */
 #endif /* SC_SCREENSAVE && SC_MONITORPOWER */
@@ -241,21 +308,105 @@ LRESULT DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return(DefWindowProc(hwnd, msg, wParam, lParam));
 }
 
+#ifdef _WIN32_WCE
+static BOOL GetLastStylusPos(POINT* ptLast)
+{
+    BOOL bResult = FALSE;
+    UINT nRet;
+    GetMouseMovePoints(ptLast, 1, &nRet);
+    if ( nRet == 1 ) {
+        ptLast->x /= 4;
+        ptLast->y /= 4;
+        bResult = TRUE;
+    }
+    return bResult;
+}
+#endif
+
+static void DIB_GenerateMouseMotionEvent(_THIS)
+{
+	extern int mouse_relative;
+	extern int posted;
+
+	POINT mouse;
+#ifdef _WIN32_WCE
+	if ( !GetCursorPos(&mouse) && !GetLastStylusPos(&mouse) ) return;
+#else
+	if ( !GetCursorPos(&mouse) ) return;
+#endif
+
+	if ( mouse_relative ) {
+		POINT center;
+		center.x = (SDL_VideoSurface->w/2);
+		center.y = (SDL_VideoSurface->h/2);
+		ClientToScreen(SDL_Window, &center);
+
+		mouse.x -= center.x;
+		mouse.y -= center.y;
+		if ( mouse.x || mouse.y ) {
+			SetCursorPos(center.x, center.y);
+			posted = SDL_PrivateMouseMotion(0, 1, (Sint16)mouse.x, (Sint16)mouse.y);
+		}
+	} else {
+		ScreenToClient(SDL_Window, &mouse);
+#ifdef SDL_VIDEO_DRIVER_GAPI
+       if (SDL_VideoSurface && this->hidden->gapiInfo)
+			GapiTransform(this->hidden->gapiInfo, &mouse.x, &mouse.y);
+#endif
+		posted = SDL_PrivateMouseMotion(0, 0, (Sint16)mouse.x, (Sint16)mouse.y);
+	}
+}
+
 void DIB_PumpEvents(_THIS)
 {
 	MSG msg;
 
 	while ( PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE) ) {
 		if ( GetMessage(&msg, NULL, 0, 0) > 0 ) {
+			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
 	}
+
+	if ( SDL_GetAppState() & SDL_APPMOUSEFOCUS ) {
+		DIB_GenerateMouseMotionEvent( this );
+	}
 }
+
+static HKL hLayoutUS = NULL;
 
 void DIB_InitOSKeymap(_THIS)
 {
-	int i;
+	int	i;
+#ifndef _WIN32_WCE
+	char	current_layout[KL_NAMELENGTH];
 
+	GetKeyboardLayoutName(current_layout);
+	//printf("Initial Keyboard Layout Name: '%s'\n", current_layout);
+
+	hLayoutUS = LoadKeyboardLayout("00000409", KLF_NOTELLSHELL);
+
+	if (!hLayoutUS) {
+		//printf("Failed to load US keyboard layout. Using current.\n");
+		hLayoutUS = GetKeyboardLayout(0);
+	}
+	LoadKeyboardLayout(current_layout, KLF_ACTIVATE);
+#else
+#if _WIN32_WCE >=420
+	TCHAR	current_layout[KL_NAMELENGTH];
+
+	GetKeyboardLayoutName(current_layout);
+	//printf("Initial Keyboard Layout Name: '%s'\n", current_layout);
+
+	hLayoutUS = LoadKeyboardLayout(L"00000409", 0);
+
+	if (!hLayoutUS) {
+		//printf("Failed to load US keyboard layout. Using current.\n");
+		hLayoutUS = GetKeyboardLayout(0);
+	}
+	LoadKeyboardLayout(current_layout, 0);
+#endif // _WIN32_WCE >=420
+#endif
 	/* Map the VK keysyms */
 	for ( i=0; i<SDL_arraysize(VK_keymap); ++i )
 		VK_keymap[i] = SDLK_UNKNOWN;
@@ -379,39 +530,123 @@ void DIB_InitOSKeymap(_THIS)
 	VK_keymap[VK_SNAPSHOT] = SDLK_PRINT;
 	VK_keymap[VK_CANCEL] = SDLK_BREAK;
 	VK_keymap[VK_APPS] = SDLK_MENU;
+
+	Arrows_keymap[3] = 0x25;
+	Arrows_keymap[2] = 0x26;
+	Arrows_keymap[1] = 0x27;
+	Arrows_keymap[0] = 0x28;
+}
+
+#define EXTKEYPAD(keypad) ((scancode & 0x100)?(mvke):(keypad))
+
+static int SDL_MapVirtualKey(int scancode, int vkey)
+{
+#ifndef _WIN32_WCE
+	int	mvke  = MapVirtualKeyEx(scancode & 0xFF, 1, hLayoutUS);
+#else
+	int	mvke  = MapVirtualKey(scancode & 0xFF, 1);
+#endif
+
+	switch(vkey) {
+		/* These are always correct */
+		case VK_DIVIDE:
+		case VK_MULTIPLY:
+		case VK_SUBTRACT:
+		case VK_ADD:
+		case VK_LWIN:
+		case VK_RWIN:
+		case VK_APPS:
+		/* These are already handled */
+		case VK_LCONTROL:
+		case VK_RCONTROL:
+		case VK_LSHIFT:
+		case VK_RSHIFT:
+		case VK_LMENU:
+		case VK_RMENU:
+		case VK_SNAPSHOT:
+		case VK_PAUSE:
+			return vkey;
+	}	
+	switch(mvke) {
+		/* Distinguish between keypad and extended keys */
+		case VK_INSERT: return EXTKEYPAD(VK_NUMPAD0);
+		case VK_DELETE: return EXTKEYPAD(VK_DECIMAL);
+		case VK_END:    return EXTKEYPAD(VK_NUMPAD1);
+		case VK_DOWN:   return EXTKEYPAD(VK_NUMPAD2);
+		case VK_NEXT:   return EXTKEYPAD(VK_NUMPAD3);
+		case VK_LEFT:   return EXTKEYPAD(VK_NUMPAD4);
+		case VK_CLEAR:  return EXTKEYPAD(VK_NUMPAD5);
+		case VK_RIGHT:  return EXTKEYPAD(VK_NUMPAD6);
+		case VK_HOME:   return EXTKEYPAD(VK_NUMPAD7);
+		case VK_UP:     return EXTKEYPAD(VK_NUMPAD8);
+		case VK_PRIOR:  return EXTKEYPAD(VK_NUMPAD9);
+	}
+	return mvke?mvke:vkey;
 }
 
 static SDL_keysym *TranslateKey(WPARAM vkey, UINT scancode, SDL_keysym *keysym, int pressed)
 {
 	/* Set the keysym information */
 	keysym->scancode = (unsigned char) scancode;
-	keysym->sym = VK_keymap[vkey];
 	keysym->mod = KMOD_NONE;
 	keysym->unicode = 0;
+	
+	if ((vkey == VK_RETURN) && (scancode & 0x100)) {
+		/* No VK_ code for the keypad enter key */
+		keysym->sym = SDLK_KP_ENTER;
+	}
+	else {
+		keysym->sym = VK_keymap[SDL_MapVirtualKey(scancode, vkey)];
+	}
+
 	if ( pressed && SDL_TranslateUNICODE ) {
 #ifdef NO_GETKEYBOARDSTATE
 		/* Uh oh, better hope the vkey is close enough.. */
+		if((keysym->sym == vkey) || (vkey > 0x7f))
 		keysym->unicode = vkey;
 #else
 		BYTE	keystate[256];
 		Uint16	wchars[2];
 
 		GetKeyboardState(keystate);
-		if (SDL_ToUnicode((UINT)vkey, scancode, keystate, wchars, sizeof(wchars)/sizeof(wchars[0]), 0) == 1)
+		/* Numlock isn't taken into account in ToUnicode,
+		 * so we handle it as a special case here */
+		if ((keystate[VK_NUMLOCK] & 1) && vkey >= VK_NUMPAD0 && vkey <= VK_NUMPAD9)
+		{
+			keysym->unicode = vkey - VK_NUMPAD0 + '0';
+		}
+		else if (SDL_ToUnicode((UINT)vkey, scancode, keystate, wchars, sizeof(wchars)/sizeof(wchars[0]), 0) > 0)
 		{
 			keysym->unicode = wchars[0];
 		}
 #endif /* NO_GETKEYBOARDSTATE */
 	}
+
+#if 0
+	{
+		HKL     hLayoutCurrent = GetKeyboardLayout(0);
+		int     sc = scancode & 0xFF;
+
+		printf("SYM:%d, VK:0x%02X, SC:0x%04X, US:(1:0x%02X, 3:0x%02X), "
+			"Current:(1:0x%02X, 3:0x%02X)\n",
+			keysym->sym, vkey, scancode,
+			MapVirtualKeyEx(sc, 1, hLayoutUS),
+			MapVirtualKeyEx(sc, 3, hLayoutUS),
+			MapVirtualKeyEx(sc, 1, hLayoutCurrent),
+			MapVirtualKeyEx(sc, 3, hLayoutCurrent)
+		);
+	}
+#endif
 	return(keysym);
 }
 
 int DIB_CreateWindow(_THIS)
 {
-	char *windowid = SDL_getenv("SDL_WINDOWID");
+	char *windowid;
 
 	SDL_RegisterApp(NULL, 0, 0);
 
+	windowid = SDL_getenv("SDL_WINDOWID");
 	SDL_windowid = (windowid != NULL);
 	if ( SDL_windowid ) {
 #if defined(_WIN32_WCE) && (_WIN32_WCE < 300)

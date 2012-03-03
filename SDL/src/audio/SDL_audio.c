@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -39,12 +39,15 @@ static AudioBootStrap *bootstrap[] = {
 #if SDL_AUDIO_DRIVER_BSD
 	&BSD_AUDIO_bootstrap,
 #endif
-#if SDL_AUDIO_DRIVER_OSS
-	&DSP_bootstrap,
-	&DMA_bootstrap,
+#if SDL_AUDIO_DRIVER_PULSE
+	&PULSE_bootstrap,
 #endif
 #if SDL_AUDIO_DRIVER_ALSA
 	&ALSA_bootstrap,
+#endif
+#if SDL_AUDIO_DRIVER_OSS
+	&DSP_bootstrap,
+	&DMA_bootstrap,
 #endif
 #if SDL_AUDIO_DRIVER_QNXNTO
 	&QNXNTOAUDIO_bootstrap,
@@ -82,9 +85,6 @@ static AudioBootStrap *bootstrap[] = {
 #if SDL_AUDIO_DRIVER_SNDMGR
 	&SNDMGR_bootstrap,
 #endif
-#if SDL_AUDIO_DRIVER_AHI
-	&AHI_bootstrap,
-#endif
 #if SDL_AUDIO_DRIVER_MINT
 	&MINTAUDIO_GSXB_bootstrap,
 	&MINTAUDIO_MCSN_bootstrap,
@@ -101,11 +101,17 @@ static AudioBootStrap *bootstrap[] = {
 #if SDL_AUDIO_DRIVER_DC
 	&DCAUD_bootstrap,
 #endif
+#if SDL_AUDIO_DRIVER_NDS
+	&NDSAUD_bootstrap,
+#endif
 #if SDL_AUDIO_DRIVER_MMEAUDIO
 	&MMEAUDIO_bootstrap,
 #endif
 #if SDL_AUDIO_DRIVER_DART
 	&DART_bootstrap,
+#endif
+#if SDL_AUDIO_DRIVER_EPOCAUDIO
+	&EPOCAudio_bootstrap,
 #endif
 	NULL
 };
@@ -114,10 +120,6 @@ SDL_AudioDevice *current_audio = NULL;
 /* Various local functions */
 int SDL_AudioInit(const char *driver_name);
 void SDL_AudioQuit(void);
-
-#if SDL_AUDIO_DRIVER_AHI
-static int audio_configured = 0;
-#endif
 
 /* The general mixing thread function */
 int SDLCALL SDL_RunAudio(void *audiop)
@@ -128,21 +130,6 @@ int SDLCALL SDL_RunAudio(void *audiop)
 	void  *udata;
 	void (SDLCALL *fill)(void *userdata,Uint8 *stream, int len);
 	int    silence;
-#if SDL_AUDIO_DRIVER_AHI
-	int started = 0;
-
-/* AmigaOS NEEDS that the audio driver is opened in the thread that uses it! */
-
-	D(bug("Task audio started audio struct:<%lx>...\n",audiop));
-
-	D(bug("Before Openaudio..."));
-	if(audio->OpenAudio(audio, &audio->spec)==-1)
-	{
-		D(bug("Open audio failed...\n"));
-		return(-1);
-	}
-	D(bug("OpenAudio...OK\n"));
-#endif
 
 	/* Perform any thread setup */
 	if ( audio->ThreadInit ) {
@@ -153,14 +140,6 @@ int SDLCALL SDL_RunAudio(void *audiop)
 	/* Set up the mixing function */
 	fill  = audio->spec.callback;
 	udata = audio->spec.userdata;
-
-#if SDL_AUDIO_DRIVER_AHI
-	audio_configured = 1;
-
-	D(bug("Audio configured... Checking for conversion\n"));
-	SDL_mutexP(audio->mixer_lock);
-	D(bug("Semaphore obtained...\n"));
-#endif
 
 	if ( audio->convert.needed ) {
 		if ( audio->convert.src_format == AUDIO_U8 ) {
@@ -173,11 +152,6 @@ int SDLCALL SDL_RunAudio(void *audiop)
 		silence = audio->spec.silence;
 		stream_len = audio->spec.size;
 	}
-
-#if SDL_AUDIO_DRIVER_AHI
-	SDL_mutexV(audio->mixer_lock);
-	D(bug("Entering audio loop...\n"));
-#endif
 
 #ifdef __OS2__
         /* Increase the priority of this thread to make sure that
@@ -216,6 +190,7 @@ int SDLCALL SDL_RunAudio(void *audiop)
 				stream = audio->fake_stream;
 			}
 		}
+
 		SDL_memset(stream, silence, stream_len);
 
 		if ( ! audio->paused ) {
@@ -253,14 +228,6 @@ int SDLCALL SDL_RunAudio(void *audiop)
 		audio->WaitDone(audio);
 	}
 
-#if SDL_AUDIO_DRIVER_AHI
-	D(bug("WaitAudio...Done\n"));
-
-	audio->CloseAudio(audio);
-
-	D(bug("CloseAudio..Done, subtask exiting...\n"));
-	audio_configured = 0;
-#endif
 #ifdef __OS2__
 #ifdef DEBUG_BUILD
         printf("[SDL_RunAudio] : Task exiting. (TID%d)\n", SDL_ThreadID());
@@ -350,7 +317,7 @@ int SDL_AudioInit(const char *driver_name)
 		   This probably isn't the place to do this, but... Shh! :)
 		 */
 		for ( i=0; bootstrap[i]; ++i ) {
-			if ( SDL_strcmp(bootstrap[i]->name, "esd") == 0 ) {
+			if ( SDL_strcasecmp(bootstrap[i]->name, "esd") == 0 ) {
 #ifdef HAVE_PUTENV
 				const char *esd_no_spawn;
 
@@ -381,8 +348,7 @@ int SDL_AudioInit(const char *driver_name)
 			}
 #endif
 			for ( i=0; bootstrap[i]; ++i ) {
-				if (SDL_strncmp(bootstrap[i]->name, driver_name,
-				            SDL_strlen(bootstrap[i]->name)) == 0) {
+				if (SDL_strcasecmp(bootstrap[i]->name, driver_name) == 0) {
 					if ( bootstrap[i]->available() ) {
 						audio=bootstrap[i]->create(idx);
 						break;
@@ -471,7 +437,7 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	if ( desired->channels == 0 ) {
 		env = SDL_getenv("SDL_AUDIO_CHANNELS");
 		if ( env ) {
-			desired->channels = SDL_atoi(env);
+			desired->channels = (Uint8)SDL_atoi(env);
 		}
 	}
 	if ( desired->channels == 0 ) {
@@ -491,7 +457,7 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	if ( desired->samples == 0 ) {
 		env = SDL_getenv("SDL_AUDIO_SAMPLES");
 		if ( env ) {
-			desired->samples = SDL_atoi(env);
+			desired->samples = (Uint16)SDL_atoi(env);
 		}
 	}
 	if ( desired->samples == 0 ) {
@@ -508,10 +474,7 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 		return(-1);
 	}
 
-#if defined(__MACOS__) || (defined(__RISCOS__) && SDL_THREADS_DISABLED)
-	/* FIXME: Need to implement PPC interrupt asm for SDL_LockAudio() */
-#else
-#if defined(__MINT__) && SDL_THREADS_DISABLED
+#if SDL_THREADS_DISABLED
 	/* Uses interrupt driven audio, without thread */
 #else
 	/* Create a semaphore for locking the sound buffers */
@@ -521,8 +484,7 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 		SDL_CloseAudio();
 		return(-1);
 	}
-#endif /* __MINT__ */
-#endif /* __MACOS__ */
+#endif /* SDL_THREADS_DISABLED */
 
 	/* Calculate the silence and size of the audio specification */
 	SDL_CalculateAudioSpec(desired);
@@ -533,33 +495,12 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	audio->enabled = 1;
 	audio->paused  = 1;
 
-#if !SDL_AUDIO_DRIVER_AHI
-
-/* AmigaOS opens audio inside the main loop */
 	audio->opened = audio->OpenAudio(audio, &audio->spec)+1;
 
 	if ( ! audio->opened ) {
 		SDL_CloseAudio();
 		return(-1);
 	}
-#else
-	D(bug("Locking semaphore..."));
-	SDL_mutexP(audio->mixer_lock);
-
-
-	audio->thread = SDL_CreateThread(SDL_RunAudio, audio);
-	D(bug("Created thread...\n"));
-
-	if ( audio->thread == NULL ) {
-		SDL_mutexV(audio->mixer_lock);
-		SDL_CloseAudio();
-		SDL_SetError("Couldn't create audio thread");
-		return(-1);
-	}
-
-	while(!audio_configured)
-		SDL_Delay(100);
-#endif
 
 	/* If the audio driver changes the buffer size, accept it */
 	if ( audio->spec.samples != desired->samples ) {
@@ -591,7 +532,8 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 			return(-1);
 		}
 		if ( audio->convert.needed ) {
-			audio->convert.len = desired->size;
+			audio->convert.len = (int) ( ((double) audio->spec.size) /
+                                          audio->convert.len_ratio );
 			audio->convert.buf =(Uint8 *)SDL_AllocAudioMem(
 			   audio->convert.len*audio->convert.len_mult);
 			if ( audio->convert.buf == NULL ) {
@@ -602,12 +544,11 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 		}
 	}
 
-#if !SDL_AUDIO_DRIVER_AHI
 	/* Start the audio thread if necessary */
 	switch (audio->opened) {
 		case  1:
 			/* Start the audio thread */
-#if (defined(__WIN32__) && !defined(_WIN32_WCE)) && !defined(HAVE_LIBC)
+#if (defined(__WIN32__) && !defined(_WIN32_WCE)) && !defined(HAVE_LIBC) && !defined(__SYMBIAN32__)
 #undef SDL_CreateThread
 			audio->thread = SDL_CreateThread(SDL_RunAudio, audio, NULL, NULL);
 #else
@@ -624,11 +565,6 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 			/* The audio is now playing */
 			break;
 	}
-#else
-	SDL_mutexV(audio->mixer_lock);
-	D(bug("SDL_OpenAudio USCITA...\n"));
-
-#endif
 
 	return(0);
 }
@@ -702,12 +638,10 @@ void SDL_AudioQuit(void)
 			SDL_FreeAudioMem(audio->convert.buf);
 
 		}
-#if !SDL_AUDIO_DRIVER_AHI
 		if ( audio->opened ) {
 			audio->CloseAudio(audio);
 			audio->opened = 0;
 		}
-#endif
 		/* Free the driver data */
 		audio->free(audio);
 		current_audio = NULL;

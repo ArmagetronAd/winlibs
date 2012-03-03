@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -54,7 +54,9 @@ static SDL_version version =
 
 /* The initialized subsystems */
 static Uint32 SDL_initialized = 0;
+#if !SDL_TIMERS_DISABLED
 static Uint32 ticks_started = 0;
+#endif
 
 #ifdef CHECK_LEAKS
 int surfaces_allocated = 0;
@@ -323,7 +325,7 @@ unsigned _System LibMain(unsigned hmod, unsigned termination)
 }
 #endif /* __WATCOMC__ */
 
-#elif defined(__WIN32__)
+#elif defined(__WIN32__)  && !defined(__SYMBIAN32__)
 
 #if !defined(HAVE_LIBC) || (defined(__WATCOMC__) && defined(BUILD_DLL))
 /* Need to include DllMain() on Watcom C for some reason.. */

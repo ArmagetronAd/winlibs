@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -24,6 +24,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+/* Make sure XBUTTON stuff is defined that isn't in older Platform SDKs... */
+#ifndef WM_XBUTTONDOWN
+#define WM_XBUTTONDOWN 0x020B
+#endif
+#ifndef WM_XBUTTONUP
+#define WM_XBUTTONUP 0x020C
+#endif
+#ifndef GET_XBUTTON_WPARAM
+#define GET_XBUTTON_WPARAM(w) (HIWORD(w))
+#endif
+
 #include "SDL_events.h"
 #include "SDL_video.h"
 #include "SDL_syswm.h"
@@ -39,9 +50,13 @@
 #include "wmmsg.h"
 #endif
 
-#ifdef _WIN32_WCE
-#include "../gapi/SDL_gapivideo.h"
+#include "../windib/SDL_gapidibvideo.h"
 
+#ifdef SDL_VIDEO_DRIVER_GAPI
+#include "../gapi/SDL_gapivideo.h"
+#endif
+
+#ifdef _WIN32_WCE
 #define IsZoomed(HWND) 1
 #define NO_GETKEYBOARDSTATE
 #if _WIN32_WCE < 420
@@ -73,6 +88,7 @@ WORD *gamma_saved = NULL;
 
 /* Functions called by the message processing function */
 LONG (*HandleMessage)(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)=NULL;
+void (*WIN_Activate)(_THIS, BOOL active, BOOL iconic);
 void (*WIN_RealizePalette)(_THIS);
 void (*WIN_PaletteChanged)(_THIS, HWND window);
 void (*WIN_WinPAINT)(_THIS, HDC hdc);
@@ -90,6 +106,9 @@ ToUnicodeFN SDL_ToUnicode = ToUnicode9xME;
 
 
 #if defined(_WIN32_WCE)
+
+//AdjustWindowRect is not available under WinCE 2003
+#define AdjustWindowRect(a,b,c) (AdjustWindowRectEx((a),(b),(c),0))
 
 // dynamically load aygshell dll because we want SDL to work on HPC and be300
 HINSTANCE aygshell = NULL;
@@ -112,61 +131,6 @@ static void LoadAygshell(void)
 	}
 }
 
-/* for gapi landscape mode */
-static void GapiTransform(SDL_ScreenOrientation rotate, char hires, Sint16 *x, Sint16 *y) {
-	Sint16 rotatedX;
-	Sint16 rotatedY;
-
-	if (hires) {
-		*x = *x * 2;
-		*y = *y * 2;
-	}
-
-	switch(rotate) {
-		case SDL_ORIENTATION_UP:
-			{
-/* this code needs testing on a real device!
-   So it will be enabled later */
-/*
-#ifdef _WIN32_WCE
-#if _WIN32_WCE >= 420
-				// test device orientation
-				// FIXME: do not check every mouse message
-				DEVMODE settings;
-				SDL_memset(&settings, 0, sizeof(DEVMODE));
-				settings.dmSize = sizeof(DEVMODE);
-				settings.dmFields = DM_DISPLAYORIENTATION;
-				ChangeDisplaySettingsEx(NULL, &settings, NULL, CDS_TEST, NULL);
-				if( settings.dmOrientation == DMDO_90 )
-				{
-					rotatedX = SDL_VideoSurface->h - *x;
-					rotatedY = *y;
-					*x = rotatedX;
-					*y = rotatedY;
-				}
-#endif
-#endif */
-			}
-			break;
-		case SDL_ORIENTATION_RIGHT:
-			if (!SDL_VideoSurface)
-				break;
-			rotatedX = SDL_VideoSurface->w - *y;
-			rotatedY = *x;
-			*x = rotatedX;
-			*y = rotatedY;
-			break;
-		case SDL_ORIENTATION_LEFT:
-			if (!SDL_VideoSurface)
-				break;
-			rotatedX = *y;
-			rotatedY = SDL_VideoSurface->h - *x;
-			*x = rotatedX;
-			*y = rotatedY;
-			break;
-	}
-}
-
 #endif
 
 /* JC 14 Mar 2006
@@ -186,15 +150,19 @@ void WIN_FlushMessageQueue()
 
 static void SDL_RestoreGameMode(void)
 {
-#ifdef _WIN32_WCE
+#ifdef _WIN32_WCE //Under ce we don't minimize, therefore no restore
+	
+#ifdef SDL_VIDEO_DRIVER_GAPI
 	SDL_VideoDevice *this = current_video;
 	if(SDL_strcmp(this->name, "gapi") == 0)
 	{
-		if( this->hidden->suspended )
+		if( this->hidden->gapiInfo->suspended )
 		{
-			this->hidden->suspended = 0;
+			this->hidden->gapiInfo->suspended = 0;
 		}
 	}
+#endif
+	
 #else
 	ShowWindow(SDL_Window, SW_RESTORE);
 #endif
@@ -209,14 +177,18 @@ static void SDL_RestoreDesktopMode(void)
 {
 
 #ifdef _WIN32_WCE
+	
+#ifdef SDL_VIDEO_DRIVER_GAPI
 	SDL_VideoDevice *this = current_video;
 	if(SDL_strcmp(this->name, "gapi") == 0)
 	{
-		if( !this->hidden->suspended )
+		if( !this->hidden->gapiInfo->suspended )
 		{
-			this->hidden->suspended = 1;
+			this->hidden->gapiInfo->suspended = 1;
 		}
 	}
+#endif
+	
 #else
 	/* WinCE does not have a taskbar, so minimizing is not convenient */
 	ShowWindow(SDL_Window, SW_MINIMIZE);
@@ -323,7 +295,6 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	SDL_VideoDevice *this = current_video;
 	static int mouse_pressed = 0;
-	static int in_window = 0;
 #ifdef WMMSG_DEBUG
 	fprintf(stderr, "Received windows message:  ");
 	if ( msg > MAX_WMMSG ) {
@@ -337,17 +308,18 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case WM_ACTIVATE: {
 			SDL_VideoDevice *this = current_video;
-			BOOL minimized;
+			BOOL active, minimized;
 			Uint8 appstate;
 
 			minimized = HIWORD(wParam);
-			if ( !minimized && (LOWORD(wParam) != WA_INACTIVE) ) {
+			active = (LOWORD(wParam) != WA_INACTIVE) && !minimized;
+			if ( active ) {
 				/* Gain the following states */
 				appstate = SDL_APPACTIVE|SDL_APPINPUTFOCUS;
-				if ( this->input_grab != SDL_GRAB_OFF ) {
-					WIN_GrabInput(this, SDL_GRAB_ON);
-				}
-				if ( !(SDL_GetAppState()&SDL_APPINPUTFOCUS) ) {
+				if ( !(SDL_GetAppState() & SDL_APPINPUTFOCUS) ) {
+					if ( this->input_grab != SDL_GRAB_OFF ) {
+						WIN_GrabInput(this, SDL_GRAB_ON);
+					}
 					if ( ! DDRAW_FULLSCREEN() ) {
 						DIB_SwapGamma(this);
 					}
@@ -356,17 +328,14 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 				}
 #if defined(_WIN32_WCE)
-			if ( WINDIB_FULLSCREEN() )
-			{
-						LoadAygshell();
-						if( SHFullScreen )
-							SHFullScreen(SDL_Window, SHFS_HIDESTARTICON|SHFS_HIDETASKBAR|SHFS_HIDESIPBUTTON);
-						else
-							ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_HIDE);
-
-			}
+				if ( WINDIB_FULLSCREEN() ) {
+					LoadAygshell();
+					if( SHFullScreen )
+						SHFullScreen(SDL_Window, SHFS_HIDESTARTICON|SHFS_HIDETASKBAR|SHFS_HIDESIPBUTTON);
+					else
+						ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_HIDE);
+				}
 #endif
-
 				posted = SDL_PrivateAppActive(1, appstate);
 				WIN_GetKeyboardState();
 			} else {
@@ -375,14 +344,16 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				if ( minimized ) {
 					appstate |= SDL_APPACTIVE;
 				}
-				if ( this->input_grab != SDL_GRAB_OFF ) {
-					WIN_GrabInput(this, SDL_GRAB_OFF);
-				}
+
 				if ( SDL_GetAppState() & SDL_APPINPUTFOCUS ) {
+					if ( this->input_grab != SDL_GRAB_OFF ) {
+						WIN_GrabInput(this, SDL_GRAB_OFF);
+					}
 					if ( ! DDRAW_FULLSCREEN() ) {
 						DIB_SwapGamma(this);
 					}
 					if ( WINDIB_FULLSCREEN() ) {
+						appstate |= SDL_APPMOUSEFOCUS;
 						SDL_RestoreDesktopMode();
 #if defined(_WIN32_WCE)
 						LoadAygshell();
@@ -390,73 +361,48 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 							SHFullScreen(SDL_Window, SHFS_SHOWSTARTICON|SHFS_SHOWTASKBAR|SHFS_SHOWSIPBUTTON);
 						else
 							ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_SHOW);
-
 #endif
 					}
 				}
 				posted = SDL_PrivateAppActive(0, appstate);
 			}
+			WIN_Activate(this, active, minimized);
 			return(0);
 		}
 		break;
 
 		case WM_MOUSEMOVE: {
-			
-			/* Mouse is handled by DirectInput when fullscreen */
-			if ( SDL_VideoSurface && ! DINPUT_FULLSCREEN() ) {
-				Sint16 x, y;
 
-				/* mouse has entered the window */
-				if ( ! in_window ) {
 #ifdef WM_MOUSELEAVE
+			if ( SDL_VideoSurface ) {
+				/* mouse has entered the window */
+
+				if ( !(SDL_GetAppState() & SDL_APPMOUSEFOCUS) ) {
 					TRACKMOUSEEVENT tme;
 
 					tme.cbSize = sizeof(tme);
 					tme.dwFlags = TME_LEAVE;
 					tme.hwndTrack = SDL_Window;
 					_TrackMouseEvent(&tme);
-#endif /* WM_MOUSELEAVE */
-					in_window = TRUE;
-
-					posted = SDL_PrivateAppActive(1, SDL_APPMOUSEFOCUS);
-				}
-
-				/* mouse has moved within the window */
-				x = LOWORD(lParam);
-				y = HIWORD(lParam);
-				if ( mouse_relative ) {
-					POINT center;
-					center.x = (SDL_VideoSurface->w/2);
-					center.y = (SDL_VideoSurface->h/2);
-					x -= (Sint16)center.x;
-					y -= (Sint16)center.y;
-					if ( x || y ) {
-						ClientToScreen(SDL_Window, &center);
-						SetCursorPos(center.x, center.y);
-						posted = SDL_PrivateMouseMotion(0, 1, x, y);
-					}
-				} else {
-#ifdef _WIN32_WCE
-					if (SDL_VideoSurface)
-						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
-#endif
-					posted = SDL_PrivateMouseMotion(0, 0, x, y);
 				}
 			}
+#endif /* WM_MOUSELEAVE */
+
+			/* Mouse motion is handled in DIB_PumpEvents or
+			 * DX5_PumpEvents, depending on the video driver
+			 * in use */
+
+			posted = SDL_PrivateAppActive(1, SDL_APPMOUSEFOCUS);
 		}
 		return(0);
 
 #ifdef WM_MOUSELEAVE
 		case WM_MOUSELEAVE: {
 
-			/* Mouse is handled by DirectInput when fullscreen */
-			if ( SDL_VideoSurface && ! DINPUT_FULLSCREEN() ) {
+			if ( SDL_VideoSurface ) {
 				/* mouse has left the window */
-				/* or */
-				/* Elvis has left the building! */
 				posted = SDL_PrivateAppActive(0, SDL_APPMOUSEFOCUS);
 			}
-			in_window = FALSE;
 		}
 		return(0);
 #endif /* WM_MOUSELEAVE */
@@ -466,10 +412,12 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_MBUTTONDOWN:
 		case WM_MBUTTONUP:
 		case WM_RBUTTONDOWN:
-		case WM_RBUTTONUP: {
+		case WM_RBUTTONUP:
+		case WM_XBUTTONDOWN:
+		case WM_XBUTTONUP: {
 			/* Mouse is handled by DirectInput when fullscreen */
-			if ( SDL_VideoSurface && ! DINPUT_FULLSCREEN() ) {
-				Sint16 x, y;
+			if ( SDL_VideoSurface && ! DINPUT() ) {
+				WORD xbuttonval = 0;
 				Uint8 button, state;
 
 				/* DJM:
@@ -505,6 +453,16 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						button = SDL_BUTTON_RIGHT;
 						state = SDL_RELEASED;
 						break;
+					case WM_XBUTTONDOWN:
+						xbuttonval = GET_XBUTTON_WPARAM(wParam);
+						button = SDL_BUTTON_X1 + xbuttonval - 1;
+						state = SDL_PRESSED;
+						break;
+					case WM_XBUTTONUP:
+						xbuttonval = GET_XBUTTON_WPARAM(wParam);
+						button = SDL_BUTTON_X1 + xbuttonval - 1;
+						state = SDL_RELEASED;
+						break;
 					default:
 						/* Eh? Unknown button? */
 						return(0);
@@ -521,20 +479,21 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						mouse_pressed = 0;
 					}
 				}
-				if ( mouse_relative ) {
-				/*	RJR: March 28, 2000
-					report internal mouse position if in relative mode */
-					x = 0; y = 0;
-				} else {
-					x = (Sint16)LOWORD(lParam);
-					y = (Sint16)HIWORD(lParam);
-#ifdef _WIN32_WCE
-					if (SDL_VideoSurface)
-						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
-#endif
-				}
 				posted = SDL_PrivateMouseButton(
-							state, button, x, y);
+							state, button, 0, 0);
+
+				/*
+				 * MSDN says:
+				 *  "Unlike the WM_LBUTTONUP, WM_MBUTTONUP, and WM_RBUTTONUP
+				 *   messages, an application should return TRUE from [an 
+				 *   XBUTTON message] if it processes it. Doing so will allow
+				 *   software that simulates this message on Microsoft Windows
+				 *   systems earlier than Windows 2000 to determine whether
+				 *   the window procedure processed the message or called
+				 *   DefWindowProc to process it.
+				 */
+				if (xbuttonval > 0)
+					return(TRUE);
 			}
 		}
 		return(0);
@@ -542,7 +501,7 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 #if (_WIN32_WINNT >= 0x0400) || (_WIN32_WINDOWS > 0x0400)
 		case WM_MOUSEWHEEL: 
-			if ( SDL_VideoSurface && ! DINPUT_FULLSCREEN() ) {
+			if ( SDL_VideoSurface && ! DINPUT() ) {
 				int move = (short)HIWORD(wParam);
 				if ( move ) {
 					Uint8 button;
@@ -626,6 +585,22 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		return(0);
 #endif /* WM_GETMINMAXINFO */
+
+		case WM_WINDOWPOSCHANGING: {
+			WINDOWPOS *windowpos = (WINDOWPOS*)lParam;
+
+			/* When menu is at the side or top, Windows likes
+			   to try to reposition the fullscreen window when
+			   changing video modes.
+			 */
+			if ( !SDL_resizing &&
+			     SDL_PublicSurface &&
+			     (SDL_PublicSurface->flags & SDL_FULLSCREEN) ) {
+				windowpos->x = 0;
+				windowpos->y = 0;
+			}
+		}
+		return(0);
 
 		case WM_WINDOWPOSCHANGED: {
 			SDL_VideoDevice *this = current_video;
@@ -779,7 +754,7 @@ int SDL_RegisterApp(char *name, Uint32 style, void *hInst)
 		/* WinCE uses the UNICODE version */
 		SDL_Appname = SDL_iconv_utf8_ucs2(name);
 #else
-		SDL_Appname = SDL_iconv_utf8_latin1(name);
+		SDL_Appname = SDL_iconv_utf8_locale(name);
 #endif /* _WIN32_WCE */
 		SDL_Appstyle = style;
 		SDL_Instance = hInst ? hInst : SDL_GetModuleHandle();

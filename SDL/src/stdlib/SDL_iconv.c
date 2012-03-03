@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -28,13 +28,27 @@
 
 #ifdef HAVE_ICONV
 
+/* Depending on which standard the iconv() was implemented with,
+   iconv() may or may not use const char ** for the inbuf param.
+   If we get this wrong, it's just a warning, so no big deal.
+*/
+#if defined(_XGP6) || \
+    defined(__GLIBC__) && ((__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 2))
+#define ICONV_INBUF_NONCONST
+#endif
+
 #include <errno.h>
 
 size_t SDL_iconv(SDL_iconv_t cd,
-                 char **inbuf, size_t *inbytesleft,
+                 const char **inbuf, size_t *inbytesleft,
                  char **outbuf, size_t *outbytesleft)
 {
-	size_t retCode = iconv(cd, inbuf, inbytesleft, outbuf, outbytesleft);
+	size_t retCode;
+#ifdef ICONV_INBUF_NONCONST
+	retCode = iconv(cd, (char **)inbuf, inbytesleft, outbuf, outbytesleft);
+#else
+	retCode = iconv(cd, inbuf, inbytesleft, outbuf, outbytesleft);
+#endif
 	if ( retCode == (size_t)-1 ) {
 		switch(errno) {
 		    case E2BIG:
@@ -95,7 +109,7 @@ static struct {
 } encodings[] = {
 	{ "ASCII",	ENCODING_ASCII },
 	{ "US-ASCII",	ENCODING_ASCII },
-	{ "LATIN1",	ENCODING_LATIN1 },
+	{ "8859-1",	ENCODING_LATIN1 },
 	{ "ISO-8859-1",	ENCODING_LATIN1 },
 	{ "UTF8",	ENCODING_UTF8 },
 	{ "UTF-8",	ENCODING_UTF8 },
@@ -117,12 +131,54 @@ static struct {
 	{ "UCS-4",	ENCODING_UCS4 },
 };
 
+static const char *getlocale(char *buffer, size_t bufsize)
+{
+	const char *lang;
+	char *ptr;
+
+	lang = SDL_getenv("LC_ALL");
+	if ( !lang ) {
+		lang = SDL_getenv("LC_CTYPE");
+	}
+	if ( !lang ) {
+		lang = SDL_getenv("LC_MESSAGES");
+	}
+	if ( !lang ) {
+		lang = SDL_getenv("LANG");
+	}
+	if ( !lang || !*lang || SDL_strcmp(lang, "C") == 0 ) {
+		lang = "ASCII";
+	}
+
+	/* We need to trim down strings like "en_US.UTF-8@blah" to "UTF-8" */
+	ptr = SDL_strchr(lang, '.');
+	if (ptr != NULL) {
+		lang = ptr + 1;
+	}
+
+	SDL_strlcpy(buffer, lang, bufsize);
+	ptr = SDL_strchr(buffer, '@');
+	if (ptr != NULL) {
+		*ptr = '\0';  /* chop end of string. */
+	}
+
+	return buffer;
+}
+
 SDL_iconv_t SDL_iconv_open(const char *tocode, const char *fromcode)
 {
 	int src_fmt = ENCODING_UNKNOWN;
 	int dst_fmt = ENCODING_UNKNOWN;
 	int i;
+	char fromcode_buffer[64];
+	char tocode_buffer[64];
 
+	if ( !fromcode || !*fromcode ) {
+		fromcode = getlocale(fromcode_buffer, sizeof(fromcode_buffer));
+	}
+	if ( !tocode || !*tocode ) {
+		tocode = getlocale(tocode_buffer, sizeof(tocode_buffer));
+	}
 	for ( i = 0; i < SDL_arraysize(encodings); ++i ) {
 		if ( SDL_strcasecmp(fromcode, encodings[i].name) == 0 ) {
 			src_fmt = encodings[i].format;
@@ -149,13 +205,14 @@ SDL_iconv_t SDL_iconv_open(const char *tocode, const char *fromcode)
 }
 
 size_t SDL_iconv(SDL_iconv_t cd,
-                 char **inbuf, size_t *inbytesleft,
+                 const char **inbuf, size_t *inbytesleft,
                  char **outbuf, size_t *outbytesleft)
 {
 	/* For simplicity, we'll convert everything to and from UCS-4 */
-	char *src, *dst;
+	const char *src;
+	char *dst;
 	size_t srclen, dstlen;
-	Uint32 ch;
+	Uint32 ch = 0;
 	size_t total;
 
 	if ( !inbuf || !*inbuf ) {
@@ -755,7 +812,7 @@ int SDL_iconv_close(SDL_iconv_t cd)
 
 #endif /* !HAVE_ICONV */
 
-char *SDL_iconv_string(const char *tocode, const char *fromcode, char *inbuf, size_t inbytesleft)
+char *SDL_iconv_string(const char *tocode, const char *fromcode, const char *inbuf, size_t inbytesleft)
 {
 	SDL_iconv_t cd;
 	char *string;
@@ -765,6 +822,16 @@ char *SDL_iconv_string(const char *tocode, const char *fromcode, char *inbuf, si
 	size_t retCode = 0;
 
 	cd = SDL_iconv_open(tocode, fromcode);
+	if ( cd == (SDL_iconv_t)-1 ) {
+		/* See if we can recover here (fixes iconv on Solaris 11) */
+		if ( !tocode || !*tocode ) {
+			tocode = "UTF-8";
+		}
+		if ( !fromcode || !*fromcode ) {
+			fromcode = "UTF-8";
+		}
+		cd = SDL_iconv_open(tocode, fromcode);
+	}
 	if ( cd == (SDL_iconv_t)-1 ) {
 		return NULL;
 	}

@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -63,6 +63,9 @@ static VideoBootStrap *bootstrap[] = {
 #if SDL_VIDEO_DRIVER_PS2GS
 	&PS2GS_bootstrap,
 #endif
+#if SDL_VIDEO_DRIVER_PS3
+	&PS3_bootstrap,
+#endif
 #if SDL_VIDEO_DRIVER_GGI
 	&GGI_bootstrap,
 #endif
@@ -90,9 +93,6 @@ static VideoBootStrap *bootstrap[] = {
 #if SDL_VIDEO_DRIVER_DRAWSPROCKET
 	&DSp_bootstrap,
 #endif
-#if SDL_VIDEO_DRIVER_CYBERGRAPHICS
-	&CGX_bootstrap,
-#endif
 #if SDL_VIDEO_DRIVER_PHOTON
 	&ph_bootstrap,
 #endif
@@ -111,6 +111,9 @@ static VideoBootStrap *bootstrap[] = {
 #if SDL_VIDEO_DRIVER_DC
 	&DC_bootstrap,
 #endif
+#if SDL_VIDEO_DRIVER_NDS
+	&NDS_bootstrap,
+#endif
 #if SDL_VIDEO_DRIVER_RISCOS
 	&RISCOS_bootstrap,
 #endif
@@ -119,6 +122,9 @@ static VideoBootStrap *bootstrap[] = {
 #endif
 #if SDL_VIDEO_DRIVER_AALIB
 	&AALIB_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_CACA
+	&CACA_bootstrap,
 #endif
 #if SDL_VIDEO_DRIVER_DUMMY
 	&DUMMY_bootstrap,
@@ -175,8 +181,7 @@ int SDL_VideoInit (const char *driver_name, Uint32 flags)
 		}
 #endif
 		for ( i=0; bootstrap[i]; ++i ) {
-			if ( SDL_strncmp(bootstrap[i]->name, driver_name,
-			             SDL_strlen(bootstrap[i]->name)) == 0 ) {
+			if ( SDL_strcasecmp(bootstrap[i]->name, driver_name) == 0) {
 				if ( bootstrap[i]->available() ) {
 					video = bootstrap[i]->create(index);
 					break;
@@ -504,7 +509,9 @@ static void SDL_ClearSurface(SDL_Surface *surface)
 		SDL_Flip(surface);
 		SDL_FillRect(surface, NULL, black);
 	}
-	SDL_Flip(surface);
+	if (surface->flags&SDL_FULLSCREEN) {
+		SDL_Flip(surface);
+	}
 }
 
 /*
@@ -635,6 +642,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	/* Reset the keyboard here so event callbacks can run */
 	SDL_ResetKeyboard();
 	SDL_ResetMouse();
+	SDL_SetMouseRange(width, height);
 	SDL_cursorstate &= ~CURSOR_USINGSW;
 
 	/* Clean up any previous video mode */
@@ -1143,16 +1151,18 @@ static void SetPalette_logical(SDL_Surface *screen, SDL_Color *colors,
 		       ncolors * sizeof(*colors));
 	}
 
-	vidpal = SDL_VideoSurface->format->palette;
-	if ( (screen == SDL_ShadowSurface) && vidpal ) {
-		/*
-		 * This is a shadow surface, and the physical
-		 * framebuffer is also indexed. Propagate the
-		 * changes to its logical palette so that
-		 * updates are always identity blits
-		 */
-		SDL_memcpy(vidpal->colors + firstcolor, colors,
-		       ncolors * sizeof(*colors));
+	if ( current_video && SDL_VideoSurface ) {
+		vidpal = SDL_VideoSurface->format->palette;
+		if ( (screen == SDL_ShadowSurface) && vidpal ) {
+			/*
+			 * This is a shadow surface, and the physical
+			 * framebuffer is also indexed. Propagate the
+			 * changes to its logical palette so that
+			 * updates are always identity blits
+			 */
+			SDL_memcpy(vidpal->colors + firstcolor, colors,
+			       ncolors * sizeof(*colors));
+		}
 	}
 	SDL_FormatChanged(screen);
 }
@@ -1245,13 +1255,13 @@ int SDL_SetPalette(SDL_Surface *screen, int which,
 	int gotall;
 	int palsize;
 
-	if ( ! current_video ) {
+	if ( !screen ) {
 		return 0;
 	}
-	if ( screen != SDL_PublicSurface ) {
+	if ( !current_video || screen != SDL_PublicSurface ) {
 		/* only screens have physical palettes */
 		which &= ~SDL_PHYSPAL;
-	} else if( (screen->flags & SDL_HWPALETTE) != SDL_HWPALETTE ) {
+	} else if ( (screen->flags & SDL_HWPALETTE) != SDL_HWPALETTE ) {
 		/* hardware palettes required for split colormaps */
 		which |= SDL_PHYSPAL | SDL_LOGPAL;
 	}
@@ -1284,16 +1294,14 @@ int SDL_SetPalette(SDL_Surface *screen, int which,
 		 * program's idea of what the screen looks like, but changes
 		 * its actual appearance.
 		 */
-		if(!video)
-			return gotall;	/* video not yet initialized */
-		if(!video->physpal && !(which & SDL_LOGPAL) ) {
+		if ( !video->physpal && !(which & SDL_LOGPAL) ) {
 			/* Lazy physical palette allocation */
 			int size;
 			SDL_Palette *pp = SDL_malloc(sizeof(*pp));
 			if ( !pp ) {
 				return 0;
 			}
-			current_video->physpal = pp;
+			video->physpal = pp;
 			pp->ncolors = pal->ncolors;
 			size = pp->ncolors * sizeof(SDL_Color);
 			pp->colors = SDL_malloc(size);

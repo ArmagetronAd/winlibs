@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -76,67 +76,58 @@ static char *GetJoystickName(int index, const char *szRegKey)
 		index (1-16) listed in the registry
 	*/
 	char *name = NULL;
+	HKEY hTopKey;
 	HKEY hKey;
 	DWORD regsize;
 	LONG regresult;
-	unsigned char regkey[256];
-	unsigned char regvalue[256];
-	unsigned char regname[256];
+	char regkey[256];
+	char regvalue[256];
+	char regname[256];
 
-	SDL_snprintf((char *) regkey, SDL_arraysize(regkey), "%s\\%s\\%s",
-		REGSTR_PATH_JOYCONFIG,
-		szRegKey,
-		REGSTR_KEY_JOYCURR);
-	regresult = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-		(LPTSTR) &regkey, 0, KEY_READ, &hKey);
-	if (regresult == ERROR_SUCCESS)
-	{
-		/*
-			find the registry key name for the
-			joystick's properties
-		*/
-		regsize = sizeof(regname);
-		SDL_snprintf((char *) regvalue, SDL_arraysize(regvalue),
-			"Joystick%d%s", index+1,
-			REGSTR_VAL_JOYOEMNAME);
-		regresult = RegQueryValueExA(hKey,
-			(char *) regvalue, 0, 0, (LPBYTE) &regname,
-			(LPDWORD) &regsize);
-		RegCloseKey(hKey);
-		if (regresult == ERROR_SUCCESS)
-		{
-			/* open that registry key */
-			SDL_snprintf((char *) regkey, SDL_arraysize(regkey), "%s\\%s",
-				REGSTR_PATH_JOYOEM, regname);
-			regresult = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-				(char *) regkey, 0, KEY_READ, &hKey);
-			if (regresult == ERROR_SUCCESS)
-			{
-				/* find the size for the OEM name text */
-				regsize = sizeof(regvalue);
-				regresult =
-					RegQueryValueExA(hKey,
-					REGSTR_VAL_JOYOEMNAME,
-					0, 0, NULL,
-					(LPDWORD) &regsize);
-				if (regresult == ERROR_SUCCESS)
-				{
-					/*
-						allocate enough memory
-						for the OEM name text ...
-					*/
-					name = (char *) SDL_malloc(regsize);
-					/* ... and read it from the registry */
-					regresult =
-						RegQueryValueExA(hKey,
-						REGSTR_VAL_JOYOEMNAME, 0, 0,
-						(LPBYTE) name,
-						(LPDWORD) &regsize);
-					RegCloseKey(hKey);
-				}
-			}
+	SDL_snprintf(regkey, SDL_arraysize(regkey), "%s\\%s\\%s",
+		REGSTR_PATH_JOYCONFIG, szRegKey, REGSTR_KEY_JOYCURR);
+	hTopKey = HKEY_LOCAL_MACHINE;
+	regresult = RegOpenKeyExA(hTopKey, regkey, 0, KEY_READ, &hKey);
+	if (regresult != ERROR_SUCCESS) {
+		hTopKey = HKEY_CURRENT_USER;
+		regresult = RegOpenKeyExA(hTopKey, regkey, 0, KEY_READ, &hKey);
+	}
+	if (regresult != ERROR_SUCCESS) {
+		return NULL;
+	}
+
+	/* find the registry key name for the joystick's properties */
+	regsize = sizeof(regname);
+	SDL_snprintf(regvalue, SDL_arraysize(regvalue), "Joystick%d%s", index+1, REGSTR_VAL_JOYOEMNAME);
+	regresult = RegQueryValueExA(hKey, regvalue, 0, 0, (LPBYTE)regname, &regsize);
+	RegCloseKey(hKey);
+
+	if (regresult != ERROR_SUCCESS) {
+		return NULL;
+	}
+
+	/* open that registry key */
+	SDL_snprintf(regkey, SDL_arraysize(regkey), "%s\\%s", REGSTR_PATH_JOYOEM, regname);
+	regresult = RegOpenKeyExA(hTopKey, regkey, 0, KEY_READ, &hKey);
+	if (regresult != ERROR_SUCCESS) {
+		return NULL;
+	}
+
+	/* find the size for the OEM name text */
+	regsize = sizeof(regvalue);
+	regresult = RegQueryValueExA(hKey, REGSTR_VAL_JOYOEMNAME, 0, 0, NULL, &regsize);
+	if (regresult == ERROR_SUCCESS) {
+		/* allocate enough memory for the OEM name text ... */
+		name = (char *) SDL_malloc(regsize);
+		if ( name ) {
+			/* ... and read it from the registry */
+			regresult = RegQueryValueExA(hKey,
+				REGSTR_VAL_JOYOEMNAME, 0, 0,
+				(LPBYTE) name, &regsize);
 		}
 	}
+	RegCloseKey(hKey);
+
 	return(name);
 }
 
@@ -167,7 +158,7 @@ int SDL_SYS_JoystickInit(void)
 		
 		joyinfo.dwSize = sizeof(joyinfo);
 		joyinfo.dwFlags = JOY_RETURNALL;
-		result = joyGetPosEx(SYS_JoystickID[i], &joyinfo);
+		result = joyGetPosEx(i, &joyinfo);
 		if ( result == JOYERR_NOERROR ) {
 			result = joyGetDevCaps(i, &joycaps, sizeof(joycaps));
 			if ( result == JOYERR_NOERROR ) {
@@ -353,6 +344,7 @@ void SDL_SYS_JoystickClose(SDL_Joystick *joystick)
 	if (joystick->hwdata != NULL) {
 		/* free system specific hardware data */
 		SDL_free(joystick->hwdata);
+		joystick->hwdata = NULL;
 	}
 }
 
@@ -363,6 +355,7 @@ void SDL_SYS_JoystickQuit(void)
 	for (i = 0; i < MAX_JOYSTICKS; i++) {
 		if ( SYS_JoystickName[i] != NULL ) {
 			SDL_free(SYS_JoystickName[i]);
+			SYS_JoystickName[i] = NULL;
 		}
 	}
 }

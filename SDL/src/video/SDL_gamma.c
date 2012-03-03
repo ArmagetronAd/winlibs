@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -50,7 +50,7 @@ static void CalculateGammaRamp(float gamma, Uint16 *ramp)
 		return;
 	} else
 	/* 1.0 gamma is identity */
-	if ( gamma >= 1.0f ) {
+	if ( gamma == 1.0f ) {
 		for ( i=0; i<256; ++i ) {
 			ramp[i] = (i << 8) | i;
 		}

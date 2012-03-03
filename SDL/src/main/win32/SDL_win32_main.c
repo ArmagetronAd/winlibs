@@ -10,14 +10,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#ifdef DEBUG
-// This is required for using win console functions
-#define _WIN32_WINNT 0x0501
-#include <conio.h>
-#include <fcntl.h>
-#include <io.h>
-#endif
-
 #ifdef _WIN32_WCE
 # define DIR_SEPERATOR TEXT("\\")
 # undef _getcwd
@@ -46,14 +38,15 @@
 #define STDOUT_FILE	TEXT("stdout.txt")
 #define STDERR_FILE	TEXT("stderr.txt")
 
-#ifndef NO_STDIO_REDIRECT
-# ifdef _WIN32_WCE
+/* Set a variable to tell if the stdio redirect has been enabled. */
+static int stdioRedirectEnabled = 0;
+
+#ifdef _WIN32_WCE
   static wchar_t stdoutPath[MAX_PATH];
   static wchar_t stderrPath[MAX_PATH];
-# else
+#else
   static char stdoutPath[MAX_PATH];
   static char stderrPath[MAX_PATH];
-# endif
 #endif
 
 #if defined(_WIN32_WCE) && _WIN32_WCE < 300
@@ -61,13 +54,35 @@
 #define isspace(a) (((CHAR)a == ' ') || ((CHAR)a == '\t'))
 #endif /* _WIN32_WCE < 300 */
 
+static void UnEscapeQuotes( char *arg )
+{
+	char *last = NULL;
+
+	while( *arg ) {
+		if( *arg == '"' && *last == '\\' ) {
+			char *c_curr = arg;
+			char *c_last = last;
+
+			while( *c_curr ) {
+				*c_last = *c_curr;
+				c_last = c_curr;
+				c_curr++;
+			}
+			*c_last = '\0';
+		}
+		last = arg;
+		arg++;
+	}
+}
+
 /* Parse a command line buffer into arguments */
 static int ParseCommandLine(char *cmdline, char **argv)
 {
 	char *bufp;
-	int argc;
+	char *lastp = NULL;
+	int argc, last_argc;
 
-	argc = 0;
+	argc = last_argc = 0;
 	for ( bufp = cmdline; *bufp; ) {
 		/* Skip leading whitespace */
 		while ( isspace(*bufp) ) {
@@ -83,7 +98,8 @@ static int ParseCommandLine(char *cmdline, char **argv)
 				++argc;
 			}
 			/* Skip over word */
-			while ( *bufp && (*bufp != '"') ) {
+			while ( *bufp && ( *bufp != '"' || *lastp == '\\' ) ) {
+				lastp = bufp;
 				++bufp;
 			}
 		} else {
@@ -104,6 +120,12 @@ static int ParseCommandLine(char *cmdline, char **argv)
 			}
 			++bufp;
 		}
+
+		/* Strip out \ from \" sequences */
+		if( argv && last_argc != argc ) {
+			UnEscapeQuotes( argv[last_argc] );	
+		}
+		last_argc = argc;	
 	}
 	if ( argv ) {
 		argv[argc] = NULL;
@@ -137,18 +159,19 @@ static void cleanup(void)
 }
 
 /* Remove the output files if there was no output written */
-static void cleanup_output(void)
-{
-#ifndef NO_STDIO_REDIRECT
+static void cleanup_output(void) {
 	FILE *file;
 	int empty;
-#endif
 
 	/* Flush the output in case anything is queued */
 	fclose(stdout);
 	fclose(stderr);
 
-#ifndef NO_STDIO_REDIRECT
+	/* Without redirection we're done */
+	if (!stdioRedirectEnabled) {
+		return;
+	}
+
 	/* See if the files have any output in them */
 	if ( stdoutPath[0] ) {
 		file = fopen(stdoutPath, TEXT("rb"));
@@ -170,7 +193,74 @@ static void cleanup_output(void)
 			}
 		}
 	}
+}
+
+/* Redirect the output (stdout and stderr) to a file */
+static void redirect_output(void)
+{
+	DWORD pathlen;
+#ifdef _WIN32_WCE
+	wchar_t path[MAX_PATH];
+#else
+	char path[MAX_PATH];
 #endif
+	FILE *newfp;
+
+	pathlen = GetModuleFileName(NULL, path, SDL_arraysize(path));
+	while ( pathlen > 0 && path[pathlen] != '\\' ) {
+		--pathlen;
+	}
+	path[pathlen] = '\0';
+
+#ifdef _WIN32_WCE
+	wcsncpy( stdoutPath, path, SDL_arraysize(stdoutPath) );
+	wcsncat( stdoutPath, DIR_SEPERATOR STDOUT_FILE, SDL_arraysize(stdoutPath) );
+#else
+	SDL_strlcpy( stdoutPath, path, SDL_arraysize(stdoutPath) );
+	SDL_strlcat( stdoutPath, DIR_SEPERATOR STDOUT_FILE, SDL_arraysize(stdoutPath) );
+#endif
+    
+	/* Redirect standard input and standard output */
+	newfp = freopen(stdoutPath, TEXT("w"), stdout);
+
+#ifndef _WIN32_WCE
+	if ( newfp == NULL ) {	/* This happens on NT */
+#if !defined(stdout)
+		stdout = fopen(stdoutPath, TEXT("w"));
+#else
+		newfp = fopen(stdoutPath, TEXT("w"));
+		if ( newfp ) {
+			*stdout = *newfp;
+		}
+#endif
+	}
+#endif /* _WIN32_WCE */
+
+#ifdef _WIN32_WCE
+	wcsncpy( stderrPath, path, SDL_arraysize(stdoutPath) );
+	wcsncat( stderrPath, DIR_SEPERATOR STDOUT_FILE, SDL_arraysize(stdoutPath) );
+#else
+	SDL_strlcpy( stderrPath, path, SDL_arraysize(stderrPath) );
+	SDL_strlcat( stderrPath, DIR_SEPERATOR STDERR_FILE, SDL_arraysize(stderrPath) );
+#endif
+
+	newfp = freopen(stderrPath, TEXT("w"), stderr);
+#ifndef _WIN32_WCE
+	if ( newfp == NULL ) {	/* This happens on NT */
+#if !defined(stderr)
+		stderr = fopen(stderrPath, TEXT("w"));
+#else
+		newfp = fopen(stderrPath, TEXT("w"));
+		if ( newfp ) {
+			*stderr = *newfp;
+		}
+#endif
+	}
+#endif /* _WIN32_WCE */
+
+	setvbuf(stdout, NULL, _IOLBF, BUFSIZ);	/* Line buffered */
+	setbuf(stderr, NULL);			/* No buffering */
+	stdioRedirectEnabled = 1;
 }
 
 #if defined(_MSC_VER) && !defined(_WIN32_WCE)
@@ -242,21 +332,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 	char **argv;
 	int argc;
 	char *cmdline;
-	DWORD pathlen;
-#ifdef _WIN32_WCE
-	wchar_t path[MAX_PATH];
-#else
-	char path[MAX_PATH];
-#endif
+	char *env_str;
 #ifdef _WIN32_WCE
 	wchar_t *bufp;
 	int nLen;
 #else
 	char *bufp;
 	size_t nLen;
-#endif
-#ifndef NO_STDIO_REDIRECT
-	FILE *newfp;
 #endif
 
 	/* Start up DDHELP.EXE before opening any files, so DDHELP doesn't
@@ -268,62 +350,17 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 		FreeLibrary(handle);
 	}
 
+	/* Check for stdio redirect settings and do the redirection */
+	if ((env_str = SDL_getenv("SDL_STDIO_REDIRECT"))) {
+		if (SDL_atoi(env_str)) {
+			redirect_output();
+		}
+	}
 #ifndef NO_STDIO_REDIRECT
-	pathlen = GetModuleFileName(NULL, path, SDL_arraysize(path));
-	while ( pathlen > 0 && path[pathlen] != '\\' ) {
-		--pathlen;
+	else {
+		redirect_output();
 	}
-	path[pathlen] = '\0';
-
-#ifdef _WIN32_WCE
-	wcsncpy( stdoutPath, path, SDL_arraysize(stdoutPath) );
-	wcsncat( stdoutPath, DIR_SEPERATOR STDOUT_FILE, SDL_arraysize(stdoutPath) );
-#else
-	SDL_strlcpy( stdoutPath, path, SDL_arraysize(stdoutPath) );
-	SDL_strlcat( stdoutPath, DIR_SEPERATOR STDOUT_FILE, SDL_arraysize(stdoutPath) );
 #endif
-    
-	/* Redirect standard input and standard output */
-	newfp = freopen(stdoutPath, TEXT("w"), stdout);
-
-#ifndef _WIN32_WCE
-	if ( newfp == NULL ) {	/* This happens on NT */
-#if !defined(stdout)
-		stdout = fopen(stdoutPath, TEXT("w"));
-#else
-		newfp = fopen(stdoutPath, TEXT("w"));
-		if ( newfp ) {
-			*stdout = *newfp;
-		}
-#endif
-	}
-#endif /* _WIN32_WCE */
-
-#ifdef _WIN32_WCE
-	wcsncpy( stderrPath, path, SDL_arraysize(stdoutPath) );
-	wcsncat( stderrPath, DIR_SEPERATOR STDOUT_FILE, SDL_arraysize(stdoutPath) );
-#else
-	SDL_strlcpy( stderrPath, path, SDL_arraysize(stderrPath) );
-	SDL_strlcat( stderrPath, DIR_SEPERATOR STDERR_FILE, SDL_arraysize(stderrPath) );
-#endif
-
-	newfp = freopen(stderrPath, TEXT("w"), stderr);
-#ifndef _WIN32_WCE
-	if ( newfp == NULL ) {	/* This happens on NT */
-#if !defined(stderr)
-		stderr = fopen(stderrPath, TEXT("w"));
-#else
-		newfp = fopen(stderrPath, TEXT("w"));
-		if ( newfp ) {
-			*stderr = *newfp;
-		}
-#endif
-	}
-#endif /* _WIN32_WCE */
-
-	setvbuf(stdout, NULL, _IOLBF, BUFSIZ);	/* Line buffered */
-	setbuf(stderr, NULL);			/* No buffering */
-#endif /* !NO_STDIO_REDIRECT */
 
 #ifdef _WIN32_WCE
 	nLen = wcslen(szCmdLine)+128+1;
@@ -356,48 +393,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 		return OutOfMemory();
 	}
 	ParseCommandLine(cmdline, argv);
-
-#ifdef DEBUG
-	// Code from: http://www.cygwin.com/ml/cygwin/2004-05/msg00215.html
-	// http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dllproc/base/attachconsole.asp
-	int hConHandle;
-	long lStdHandle;
-	FILE *fp;
-	int iVar;
-
-	// Try to alloc a console / works on Windows 9x - XP
-	// attach only works from Windows XP on
-	AllocConsole();
-
-	// redirect unbuffered STDOUT to the console
-	lStdHandle = (long)GetStdHandle(STD_OUTPUT_HANDLE);
-	hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-	fp = _fdopen( hConHandle, "w" );
-	*stdout = *fp;
-	setvbuf( stdout, NULL, _IONBF, 0 );
-
-	// redirect unbuffered STDIN to the console
-	lStdHandle = (long)GetStdHandle(STD_INPUT_HANDLE);
-	hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-	fp = _fdopen( hConHandle, "r" );
-	*stdin = *fp;
-	setvbuf( stdin, NULL, _IONBF, 0 );
-
-	// redirect unbuffered STDERR to the console
-	lStdHandle = (long)GetStdHandle(STD_ERROR_HANDLE);
-	hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-	fp = _fdopen( hConHandle, "w" );
-	*stderr = *fp;
-	setvbuf( stderr, NULL, _IONBF, 0 );
-
-	// test stdio
-//	fprintf(stdout, "Test output to stdout\n");
-//	fprintf(stderr, "Test output to stderr\n");
-//	fprintf(stdout, "Enter an integer to test stdin: ");
-//	fscanf(stdin,"%d", &iVar);
-//	printf("You entered %d\n", iVar);
-//	getch();
-#endif
 
 	/* Run the main program (after a little SDL initialization) */
 	console_main(argc, argv);

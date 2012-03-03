@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -39,6 +39,9 @@
 #ifndef GWLP_WNDPROC
 #define GWLP_WNDPROC	GWL_WNDPROC
 #endif
+#ifndef GWLP_HINSTANCE
+#define GWLP_HINSTANCE GWL_HINSTANCE
+#endif
 #ifndef GCLP_HICON
 #define GCLP_HICON GCL_HICON
 #endif
@@ -48,10 +51,13 @@
 /* Hidden "this" pointer for the video functions */
 #define _THIS	SDL_VideoDevice *this
 
+#define FULLSCREEN() \
+	((SDL_VideoSurface->flags & SDL_FULLSCREEN) == SDL_FULLSCREEN)
+
 #define WINDIB_FULLSCREEN()						\
 (									\
 	SDL_VideoSurface &&						\
-	((SDL_VideoSurface->flags & SDL_FULLSCREEN) == SDL_FULLSCREEN) && \
+	FULLSCREEN() && \
 	(((SDL_VideoSurface->flags & SDL_OPENGL   ) == SDL_OPENGL    ) || \
 	((SDL_strcmp(this->name, "windib") == 0) || \
 	 (SDL_strcmp(this->name, "gapi") == 0))) \
@@ -59,12 +65,18 @@
 #define DDRAW_FULLSCREEN() 						\
 (									\
 	SDL_VideoSurface &&						\
-	((SDL_VideoSurface->flags & SDL_FULLSCREEN) == SDL_FULLSCREEN) && \
+	FULLSCREEN() && \
 	((SDL_VideoSurface->flags & SDL_OPENGL    ) != SDL_OPENGL    ) && \
 	(SDL_strcmp(this->name, "directx") == 0)				\
 )
 
-#define DINPUT_FULLSCREEN()	DDRAW_FULLSCREEN()
+#define DINPUT_FULLSCREEN() 						\
+(									\
+	FULLSCREEN() && \
+	(strcmp(this->name, "directx") == 0)				\
+)
+
+#define DINPUT() (strcmp(this->name, "directx") == 0)
 
 /* The main window -- and a function to set it for the audio */
 #ifdef _WIN32_WCE
@@ -80,6 +92,9 @@ extern BOOL SDL_windowid;
    subsystem (SDL_sysevents.c)
 */
 extern void WIN_FlushMessageQueue();
+
+/* Called by windows message loop when application is activated */
+extern void (*WIN_Activate)(_THIS, BOOL active, BOOL minimized);
 
 /* Called by windows message loop when system palette is available */
 extern void (*WIN_RealizePalette)(_THIS);

@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2009 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -44,11 +44,7 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 			dst = cvt->buf;
 			for ( i=cvt->len_cvt/2; i; --i ) {
 				sample = src[0] + src[1];
-				if ( sample > 255 ) {
-					*dst = 255;
-				} else {
-					*dst = (Uint8)sample;
-				}
+				*dst = (Uint8)(sample / 2);
 				src += 2;
 				dst += 1;
 			}
@@ -62,14 +58,7 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 			dst = (Sint8 *)cvt->buf;
 			for ( i=cvt->len_cvt/2; i; --i ) {
 				sample = src[0] + src[1];
-				if ( sample > 127 ) {
-					*dst = 127;
-				} else
-				if ( sample < -128 ) {
-					*dst = -128;
-				} else {
-					*dst = (Sint8)sample;
-				}
+				*dst = (Sint8)(sample / 2);
 				src += 2;
 				dst += 1;
 			}
@@ -85,14 +74,10 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Uint16)((src[0]<<8)|src[1])+
 					         (Uint16)((src[2]<<8)|src[3]);
-					if ( sample > 65535 ) {
-						dst[0] = 0xFF;
-						dst[1] = 0xFF;
-					} else {
-						dst[1] = (sample&0xFF);
-						sample >>= 8;
-						dst[0] = (sample&0xFF);
-					}
+					sample /= 2;
+					dst[1] = (sample&0xFF);
+					sample >>= 8;
+					dst[0] = (sample&0xFF);
 					src += 4;
 					dst += 2;
 				}
@@ -100,14 +85,10 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Uint16)((src[1]<<8)|src[0])+
 					         (Uint16)((src[3]<<8)|src[2]);
-					if ( sample > 65535 ) {
-						dst[0] = 0xFF;
-						dst[1] = 0xFF;
-					} else {
-						dst[0] = (sample&0xFF);
-						sample >>= 8;
-						dst[1] = (sample&0xFF);
-					}
+					sample /= 2;
+					dst[0] = (sample&0xFF);
+					sample >>= 8;
+					dst[1] = (sample&0xFF);
 					src += 4;
 					dst += 2;
 				}
@@ -124,18 +105,10 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Sint16)((src[0]<<8)|src[1])+
 					         (Sint16)((src[2]<<8)|src[3]);
-					if ( sample > 32767 ) {
-						dst[0] = 0x7F;
-						dst[1] = 0xFF;
-					} else
-					if ( sample < -32768 ) {
-						dst[0] = 0x80;
-						dst[1] = 0x00;
-					} else {
-						dst[1] = (sample&0xFF);
-						sample >>= 8;
-						dst[0] = (sample&0xFF);
-					}
+					sample /= 2;
+					dst[1] = (sample&0xFF);
+					sample >>= 8;
+					dst[0] = (sample&0xFF);
 					src += 4;
 					dst += 2;
 				}
@@ -143,18 +116,10 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Sint16)((src[1]<<8)|src[0])+
 					         (Sint16)((src[3]<<8)|src[2]);
-					if ( sample > 32767 ) {
-						dst[1] = 0x7F;
-						dst[0] = 0xFF;
-					} else
-					if ( sample < -32768 ) {
-						dst[1] = 0x80;
-						dst[0] = 0x00;
-					} else {
-						dst[0] = (sample&0xFF);
-						sample >>= 8;
-						dst[1] = (sample&0xFF);
-					}
+					sample /= 2;
+					dst[0] = (sample&0xFF);
+					sample >>= 8;
+					dst[1] = (sample&0xFF);
 					src += 4;
 					dst += 2;
 				}
@@ -1374,7 +1339,7 @@ int SDL_BuildAudioCVT(SDL_AudioCVT *cvt,
 
 	/* First filter:  Endian conversion from src to dst */
 	if ( (src_format & 0x1000) != (dst_format & 0x1000)
-	     && ((src_format & 0xff) != 8) ) {
+	     && ((src_format & 0xff) == 16) && ((dst_format & 0xff) == 16)) {
 		cvt->filters[cvt->filter_index++] = SDL_ConvertEndian;
 	}
 	
