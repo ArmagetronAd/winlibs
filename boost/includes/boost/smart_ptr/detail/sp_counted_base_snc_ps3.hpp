@@ -1,26 +1,26 @@
-#ifndef BOOST_SMART_PTR_DETAIL_SP_COUNTED_BASE_SYNC_HPP_INCLUDED
-#define BOOST_SMART_PTR_DETAIL_SP_COUNTED_BASE_SYNC_HPP_INCLUDED
+#ifndef BOOST_SMART_PTR_DETAIL_SP_COUNTED_BASE_SNC_PS3_HPP_INCLUDED
+#define BOOST_SMART_PTR_DETAIL_SP_COUNTED_BASE_SNC_PS3_HPP_INCLUDED
 
 // MS compatible compilers support #pragma once
-
 #if defined(_MSC_VER) && (_MSC_VER >= 1020)
 # pragma once
 #endif
 
-//  detail/sp_counted_base_sync.hpp - g++ 4.1+ __sync intrinsics
+//  detail/sp_counted_base_gcc_sparc.hpp - g++ on Sparc V8+
 //
-//  Copyright (c) 2007 Peter Dimov
+//  Copyright (c) 2006 Piotr Wyderski
+//  Copyright (c) 2006 Tomas Puverle
+//  Copyright (c) 2006 Peter Dimov
+//  Copyright (c) 2011 Emil Dotchevski
 //
 //  Distributed under the Boost Software License, Version 1.0.
 //  See accompanying file LICENSE_1_0.txt or copy at
 //  http://www.boost.org/LICENSE_1_0.txt
+//
+//  Thanks to Michael van der Westhuizen
 
 #include <boost/detail/sp_typeinfo.hpp>
-#include <limits.h>
-
-#if defined( __ia64__ ) && defined( __INTEL_COMPILER )
-# include <ia64intrin.h>
-#endif
+#include <inttypes.h> // uint32_t
 
 namespace boost
 {
@@ -28,50 +28,56 @@ namespace boost
 namespace detail
 {
 
-#if INT_MAX >= 2147483647
-
-typedef int sp_int32_t;
-
-#else
-
-typedef long sp_int32_t;
-
-#endif
-
-inline void atomic_increment( sp_int32_t * pw )
+inline uint32_t compare_and_swap( uint32_t * dest_, uint32_t compare_, uint32_t swap_ )
 {
-    __sync_fetch_and_add( pw, 1 );
+    return __builtin_cellAtomicCompareAndSwap32(dest_,compare_,swap_);
 }
 
-inline sp_int32_t atomic_decrement( sp_int32_t * pw )
+inline uint32_t atomic_fetch_and_add( uint32_t * pw, uint32_t dv )
 {
-    return __sync_fetch_and_add( pw, -1 );
+    // long r = *pw;
+    // *pw += dv;
+    // return r;
+
+    for( ;; )
+    {
+        uint32_t r = *pw;
+
+        if( __builtin_expect((compare_and_swap(pw, r, r + dv) == r), 1) )
+        {
+            return r;
+        }
+    }
 }
 
-inline sp_int32_t atomic_conditional_increment( sp_int32_t * pw )
+inline void atomic_increment( uint32_t * pw )
+{
+    (void) __builtin_cellAtomicIncr32( pw );
+}
+
+inline uint32_t atomic_decrement( uint32_t * pw )
+{
+    return __builtin_cellAtomicDecr32( pw );
+}
+
+inline uint32_t atomic_conditional_increment( uint32_t * pw )
 {
     // long r = *pw;
     // if( r != 0 ) ++*pw;
     // return r;
 
-    sp_int32_t r = *pw;
-
     for( ;; )
     {
+        uint32_t r = *pw;
+
         if( r == 0 )
         {
             return r;
         }
 
-        sp_int32_t r2 = __sync_val_compare_and_swap( pw, r, r + 1 );
-
-        if( r2 == r )
+        if( __builtin_expect( ( compare_and_swap( pw, r, r + 1 ) == r ), 1 ) )
         {
             return r;
-        }
-        else
-        {
-            r = r2;
         }
     }    
 }
@@ -83,8 +89,8 @@ private:
     sp_counted_base( sp_counted_base const & );
     sp_counted_base & operator= ( sp_counted_base const & );
 
-    sp_int32_t use_count_;        // #shared
-    sp_int32_t weak_count_;       // #weak + (#shared != 0)
+    uint32_t use_count_;        // #shared
+    uint32_t weak_count_;       // #weak + (#shared != 0)
 
 public:
 
@@ -145,7 +151,7 @@ public:
 
     long use_count() const // nothrow
     {
-        return const_cast< sp_int32_t const volatile & >( use_count_ );
+        return const_cast< uint32_t const volatile & >( use_count_ );
     }
 };
 
@@ -153,4 +159,4 @@ public:
 
 } // namespace boost
 
-#endif  // #ifndef BOOST_SMART_PTR_DETAIL_SP_COUNTED_BASE_SYNC_HPP_INCLUDED
+#endif  // #ifndef BOOST_SMART_PTR_DETAIL_SP_COUNTED_BASE_SNC_PS3_HPP_INCLUDED
