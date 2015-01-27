@@ -46,6 +46,8 @@
 #endif
 #include <stdio.h>
 #include <fcntl.h>
+#include <iostream>
+#include <fstream>
 
 namespace google {
 namespace protobuf {
@@ -94,7 +96,8 @@ string GetTemporaryDirectoryName() {
   // tmpnam() is generally not considered safe but we're only using it for
   // testing.  We cannot use tmpfile() or mkstemp() since we're creating a
   // directory.
-  string result = tmpnam(NULL);
+  char b[L_tmpnam + 1];     // HPUX multithread return 0 if s is 0
+  string result = tmpnam(b);
 #ifdef _WIN32
   // On Win32, tmpnam() returns a file prefixed with '\', but which is supposed
   // to be used in the current working directory.  WTF?
@@ -220,18 +223,33 @@ ScopedMemoryLog::~ScopedMemoryLog() {
   active_log_ = NULL;
 }
 
-const vector<string>& ScopedMemoryLog::GetMessages(LogLevel dummy) const {
-  GOOGLE_CHECK_EQ(dummy, ERROR);
-  return messages_;
+const vector<string>& ScopedMemoryLog::GetMessages(LogLevel level) {
+  GOOGLE_CHECK(level == ERROR ||
+               level == WARNING);
+  return messages_[level];
 }
 
 void ScopedMemoryLog::HandleLog(LogLevel level, const char* filename,
                                 int line, const string& message) {
   GOOGLE_CHECK(active_log_ != NULL);
-  if (level == ERROR) {
-    active_log_->messages_.push_back(message);
+  if (level == ERROR || level == WARNING) {
+    active_log_->messages_[level].push_back(message);
   }
 }
+
+namespace {
+
+// Force shutdown at process exit so that we can test for memory leaks.  To
+// actually check for leaks, I suggest using the heap checker included with
+// google-perftools.  Set it to "draconian" mode to ensure that every last
+// call to malloc() has a corresponding free().
+struct ForceShutdown {
+  ~ForceShutdown() {
+    ShutdownProtobufLibrary();
+  }
+} force_shutdown;
+
+}  // namespace
 
 }  // namespace protobuf
 }  // namespace google
