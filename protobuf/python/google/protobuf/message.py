@@ -36,7 +36,6 @@
 
 __author__ = 'robinson@google.com (Will Robinson)'
 
-from google.protobuf import text_format
 
 class Error(Exception): pass
 class DecodeError(Error): pass
@@ -68,15 +67,29 @@ class Message(object):
 
   DESCRIPTOR = None
 
+  def __deepcopy__(self, memo=None):
+    clone = type(self)()
+    clone.MergeFrom(self)
+    return clone
+
   def __eq__(self, other_msg):
+    """Recursively compares two messages by value and structure."""
     raise NotImplementedError
 
   def __ne__(self, other_msg):
     # Can't just say self != other_msg, since that would infinitely recurse. :)
     return not self == other_msg
 
+  def __hash__(self):
+    raise TypeError('unhashable object')
+
   def __str__(self):
-    return text_format.MessageToString(self)
+    """Outputs a human-readable representation of the message."""
+    raise NotImplementedError
+
+  def __unicode__(self):
+    """Outputs a human-readable representation of the message."""
+    raise NotImplementedError
 
   def MergeFrom(self, other_msg):
     """Merges the contents of the specified message into current message.
@@ -100,13 +113,22 @@ class Message(object):
     Args:
       other_msg: Message to copy into the current one.
     """
-    if self == other_msg:
+    if self is other_msg:
       return
     self.Clear()
     self.MergeFrom(other_msg)
 
   def Clear(self):
     """Clears all data that was set in the message."""
+    raise NotImplementedError
+
+  def SetInParent(self):
+    """Mark this as present in the parent.
+
+    This normally happens automatically when you assign a field of a
+    sub-message, but sometimes you want to make the sub-message
+    present while keeping it empty.  If you find yourself using this,
+    you may want to reconsider your design."""
     raise NotImplementedError
 
   def IsInitialized(self):
@@ -207,6 +229,9 @@ class Message(object):
     raise NotImplementedError
 
   def HasField(self, field_name):
+    """Checks if a certain field is set for the message. Note if the
+    field_name is not defined in the message descriptor, ValueError will be
+    raised."""
     raise NotImplementedError
 
   def ClearField(self, field_name):
@@ -244,3 +269,12 @@ class Message(object):
     via a previous _SetListener() call.
     """
     raise NotImplementedError
+
+  def __getstate__(self):
+    """Support the pickle protocol."""
+    return dict(serialized=self.SerializePartialToString())
+
+  def __setstate__(self, state):
+    """Support the pickle protocol."""
+    self.__init__()
+    self.ParseFromString(state['serialized'])

@@ -28,15 +28,24 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-"""Declares the RPC service interfaces.
+"""DEPRECATED:  Declares the RPC service interfaces.
 
 This module declares the abstract interfaces underlying proto2 RPC
-services.  These are intented to be independent of any particular RPC
+services.  These are intended to be independent of any particular RPC
 implementation, so that proto2 services can be used on top of a variety
-of implementations.
+of implementations.  Starting with version 2.3.0, RPC implementations should
+not try to build on these, but should instead provide code generator plugins
+which generate code specific to the particular RPC implementation.  This way
+the generated code can be more appropriate for the implementation in use
+and can avoid unnecessary layers of indirection.
 """
 
 __author__ = 'petar@google.com (Petar Petrov)'
+
+
+class RpcException(Exception):
+  """Exception raised on failed blocking RPC method call."""
+  pass
 
 
 class Service(object):
@@ -49,13 +58,19 @@ class Service(object):
   its exact type at compile time (analogous to the Message interface).
   """
 
-  def GetDescriptor(self):
+  def GetDescriptor():
     """Retrieves this service's descriptor."""
     raise NotImplementedError
 
   def CallMethod(self, method_descriptor, rpc_controller,
                  request, done):
     """Calls a method of the service specified by method_descriptor.
+
+    If "done" is None then the call is blocking and the response
+    message will be returned directly.  Otherwise the call is asynchronous
+    and "done" will later be called with the response value.
+
+    In the blocking case, RpcException will be raised on error.
 
     Preconditions:
     * method_descriptor.service == GetDescriptor
@@ -69,6 +84,9 @@ class Service(object):
     Postconditions:
     * "done" will be called when the method is complete.  This may be
       before CallMethod() returns or it may be at some point in the future.
+    * If the RPC failed, the response value passed to "done" will be None.
+      Further details about the failure can be found by querying the
+      RpcController.
     """
     raise NotImplementedError
 

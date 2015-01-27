@@ -54,8 +54,7 @@ class BaseContainer(object):
     Args:
       message_listener: A MessageListener implementation.
         The RepeatedScalarFieldContainer will call this object's
-        TransitionToNonempty() method when it transitions from being empty to
-        being nonempty.
+        Modified() method when it is modified.
     """
     self._message_listener = message_listener
     self._values = []
@@ -73,6 +72,20 @@ class BaseContainer(object):
     # The concrete classes should define __eq__.
     return not self == other
 
+  def __hash__(self):
+    raise TypeError('unhashable object')
+
+  def __repr__(self):
+    return repr(self._values)
+
+  def sort(self, *args, **kwargs):
+    # Continue to support the old sort_function keyword argument.
+    # This is expected to be a rare occurrence, so use LBYL to avoid
+    # the overhead of actually catching KeyError.
+    if 'sort_function' in kwargs:
+      kwargs['cmp'] = kwargs.pop('sort_function')
+    self._values.sort(*args, **kwargs)
+
 
 class RepeatedScalarFieldContainer(BaseContainer):
 
@@ -86,35 +99,79 @@ class RepeatedScalarFieldContainer(BaseContainer):
     Args:
       message_listener: A MessageListener implementation.
         The RepeatedScalarFieldContainer will call this object's
-        TransitionToNonempty() method when it transitions from being empty to
-        being nonempty.
+        Modified() method when it is modified.
       type_checker: A type_checkers.ValueChecker instance to run on elements
         inserted into this container.
     """
     super(RepeatedScalarFieldContainer, self).__init__(message_listener)
     self._type_checker = type_checker
 
-  def append(self, elem):
-    """Appends a scalar to the list. Similar to list.append()."""
-    self._type_checker.CheckValue(elem)
-    self._values.append(elem)
-    self._message_listener.ByteSizeDirty()
-    if len(self._values) == 1:
-      self._message_listener.TransitionToNonempty()
+  def append(self, value):
+    """Appends an item to the list. Similar to list.append()."""
+    self._type_checker.CheckValue(value)
+    self._values.append(value)
+    if not self._message_listener.dirty:
+      self._message_listener.Modified()
+
+  def insert(self, key, value):
+    """Inserts the item at the specified position. Similar to list.insert()."""
+    self._type_checker.CheckValue(value)
+    self._values.insert(key, value)
+    if not self._message_listener.dirty:
+      self._message_listener.Modified()
+
+  def extend(self, elem_seq):
+    """Extends by appending the given sequence. Similar to list.extend()."""
+    if not elem_seq:
+      return
+
+    new_values = []
+    for elem in elem_seq:
+      self._type_checker.CheckValue(elem)
+      new_values.append(elem)
+    self._values.extend(new_values)
+    self._message_listener.Modified()
+
+  def MergeFrom(self, other):
+    """Appends the contents of another repeated field of the same type to this
+    one. We do not check the types of the individual fields.
+    """
+    self._values.extend(other._values)
+    self._message_listener.Modified()
 
   def remove(self, elem):
-    """Removes a scalar from the list. Similar to list.remove()."""
+    """Removes an item from the list. Similar to list.remove()."""
     self._values.remove(elem)
-    self._message_listener.ByteSizeDirty()
+    self._message_listener.Modified()
 
   def __setitem__(self, key, value):
     """Sets the item on the specified position."""
-    # No need to call TransitionToNonempty(), since if we're able to
-    # set the element at this index, we were already nonempty before
-    # this method was called.
-    self._message_listener.ByteSizeDirty()
     self._type_checker.CheckValue(value)
     self._values[key] = value
+    self._message_listener.Modified()
+
+  def __getslice__(self, start, stop):
+    """Retrieves the subset of items from between the specified indices."""
+    return self._values[start:stop]
+
+  def __setslice__(self, start, stop, values):
+    """Sets the subset of items from between the specified indices."""
+    new_values = []
+    for value in values:
+      self._type_checker.CheckValue(value)
+      new_values.append(value)
+    self._values[start:stop] = new_values
+    self._message_listener.Modified()
+
+  def __delitem__(self, key):
+    """Deletes the item at the specified position."""
+    del self._values[key]
+    self._message_listener.Modified()
+
+  def __delslice__(self, start, stop):
+    """Deletes the subset of items from between the specified indices."""
+    del self._values[start:stop]
+    self._message_listener.Modified()
 
   def __eq__(self, other):
     """Compares the current instance with another one."""
@@ -144,8 +201,7 @@ class RepeatedCompositeFieldContainer(BaseContainer):
     Args:
       message_listener: A MessageListener implementation.
         The RepeatedCompositeFieldContainer will call this object's
-        TransitionToNonempty() method when it transitions from being empty to
-        being nonempty.
+        Modified() method when it is modified.
       message_descriptor: A Descriptor instance describing the protocol type
         that should be present in this container.  We'll use the
         _concrete_class field of this descriptor when the client calls add().
@@ -153,19 +209,55 @@ class RepeatedCompositeFieldContainer(BaseContainer):
     super(RepeatedCompositeFieldContainer, self).__init__(message_listener)
     self._message_descriptor = message_descriptor
 
-  def add(self):
-    """Adds a new element to the list and returns it."""
-    new_element = self._message_descriptor._concrete_class()
+  def add(self, **kwargs):
+    """Adds a new element at the end of the list and returns it. Keyword
+    arguments may be used to initialize the element.
+    """
+    new_element = self._message_descriptor._concrete_class(**kwargs)
     new_element._SetListener(self._message_listener)
     self._values.append(new_element)
-    self._message_listener.ByteSizeDirty()
-    self._message_listener.TransitionToNonempty()
+    if not self._message_listener.dirty:
+      self._message_listener.Modified()
     return new_element
 
+  def extend(self, elem_seq):
+    """Extends by appending the given sequence of elements of the same type
+    as this one, copying each individual message.
+    """
+    message_class = self._message_descriptor._concrete_class
+    listener = self._message_listener
+    values = self._values
+    for message in elem_seq:
+      new_element = message_class()
+      new_element._SetListener(listener)
+      new_element.MergeFrom(message)
+      values.append(new_element)
+    listener.Modified()
+
+  def MergeFrom(self, other):
+    """Appends the contents of another repeated field of the same type to this
+    one, copying each individual message.
+    """
+    self.extend(other._values)
+
+  def remove(self, elem):
+    """Removes an item from the list. Similar to list.remove()."""
+    self._values.remove(elem)
+    self._message_listener.Modified()
+
+  def __getslice__(self, start, stop):
+    """Retrieves the subset of items from between the specified indices."""
+    return self._values[start:stop]
+
   def __delitem__(self, key):
-    """Deletes the element on the specified position."""
-    self._message_listener.ByteSizeDirty()
+    """Deletes the item at the specified position."""
     del self._values[key]
+    self._message_listener.Modified()
+
+  def __delslice__(self, start, stop):
+    """Deletes the subset of items from between the specified indices."""
+    del self._values[start:stop]
+    self._message_listener.Modified()
 
   def __eq__(self, other):
     """Compares the current instance with another one."""
@@ -175,5 +267,3 @@ class RepeatedCompositeFieldContainer(BaseContainer):
       raise TypeError('Can only compare repeated composite fields against '
                       'other repeated composite fields.')
     return self._values == other._values
-
-  # TODO(robinson): Implement, document, and test slicing support.

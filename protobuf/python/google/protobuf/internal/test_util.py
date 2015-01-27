@@ -31,7 +31,7 @@
 """Utilities for Python proto2 tests.
 
 This is intentionally modeled on C++ code in
-//net/proto2/internal/test_util.*.
+//google/protobuf/test_util.*.
 """
 
 __author__ = 'robinson@google.com (Will Robinson)'
@@ -42,8 +42,8 @@ from google.protobuf import unittest_import_pb2
 from google.protobuf import unittest_pb2
 
 
-def SetAllFields(message):
-  """Sets every field in the message to a unique value.
+def SetAllNonLazyFields(message):
+  """Sets every non-lazy field in the message to a unique value.
 
   Args:
     message: A unittest_pb2.TestAllTypes instance.
@@ -79,6 +79,7 @@ def SetAllFields(message):
   message.optional_nested_message.bb = 118
   message.optional_foreign_message.c = 119
   message.optional_import_message.d = 120
+  message.optional_public_import_message.e = 126
 
   message.optional_nested_enum = unittest_pb2.TestAllTypes.BAZ
   message.optional_foreign_enum = unittest_pb2.FOREIGN_BAZ
@@ -111,6 +112,7 @@ def SetAllFields(message):
   message.repeated_nested_message.add().bb = 218
   message.repeated_foreign_message.add().c = 219
   message.repeated_import_message.add().d = 220
+  message.repeated_lazy_message.add().bb = 227
 
   message.repeated_nested_enum.append(unittest_pb2.TestAllTypes.BAR)
   message.repeated_foreign_enum.append(unittest_pb2.FOREIGN_BAR)
@@ -140,6 +142,7 @@ def SetAllFields(message):
   message.repeated_nested_message.add().bb = 318
   message.repeated_foreign_message.add().c = 319
   message.repeated_import_message.add().d = 320
+  message.repeated_lazy_message.add().bb = 327
 
   message.repeated_nested_enum.append(unittest_pb2.TestAllTypes.BAZ)
   message.repeated_foreign_enum.append(unittest_pb2.FOREIGN_BAZ)
@@ -174,6 +177,11 @@ def SetAllFields(message):
 
   message.default_string_piece = '424'
   message.default_cord = '425'
+
+
+def SetAllFields(message):
+  SetAllNonLazyFields(message)
+  message.optional_lazy_message.bb = 127
 
 
 def SetAllExtensions(message):
@@ -211,6 +219,8 @@ def SetAllExtensions(message):
   extensions[pb2.optional_nested_message_extension].bb = 118
   extensions[pb2.optional_foreign_message_extension].c = 119
   extensions[pb2.optional_import_message_extension].d = 120
+  extensions[pb2.optional_public_import_message_extension].e = 126
+  extensions[pb2.optional_lazy_message_extension].bb = 127
 
   extensions[pb2.optional_nested_enum_extension] = pb2.TestAllTypes.BAZ
   extensions[pb2.optional_nested_enum_extension] = pb2.TestAllTypes.BAZ
@@ -244,6 +254,7 @@ def SetAllExtensions(message):
   extensions[pb2.repeated_nested_message_extension].add().bb = 218
   extensions[pb2.repeated_foreign_message_extension].add().c = 219
   extensions[pb2.repeated_import_message_extension].add().d = 220
+  extensions[pb2.repeated_lazy_message_extension].add().bb = 227
 
   extensions[pb2.repeated_nested_enum_extension].append(pb2.TestAllTypes.BAR)
   extensions[pb2.repeated_foreign_enum_extension].append(pb2.FOREIGN_BAR)
@@ -273,6 +284,7 @@ def SetAllExtensions(message):
   extensions[pb2.repeated_nested_message_extension].add().bb = 318
   extensions[pb2.repeated_foreign_message_extension].add().c = 319
   extensions[pb2.repeated_import_message_extension].add().d = 320
+  extensions[pb2.repeated_lazy_message_extension].add().bb = 327
 
   extensions[pb2.repeated_nested_enum_extension].append(pb2.TestAllTypes.BAZ)
   extensions[pb2.repeated_foreign_enum_extension].append(pb2.FOREIGN_BAZ)
@@ -351,6 +363,204 @@ def ExpectAllFieldsAndExtensionsInOrder(serialized):
   if expected != serialized:
     raise ValueError('Expected %r, found %r' % (expected, serialized))
 
+
+def ExpectAllFieldsSet(test_case, message):
+  """Check all fields for correct values have after Set*Fields() is called."""
+  test_case.assertTrue(message.HasField('optional_int32'))
+  test_case.assertTrue(message.HasField('optional_int64'))
+  test_case.assertTrue(message.HasField('optional_uint32'))
+  test_case.assertTrue(message.HasField('optional_uint64'))
+  test_case.assertTrue(message.HasField('optional_sint32'))
+  test_case.assertTrue(message.HasField('optional_sint64'))
+  test_case.assertTrue(message.HasField('optional_fixed32'))
+  test_case.assertTrue(message.HasField('optional_fixed64'))
+  test_case.assertTrue(message.HasField('optional_sfixed32'))
+  test_case.assertTrue(message.HasField('optional_sfixed64'))
+  test_case.assertTrue(message.HasField('optional_float'))
+  test_case.assertTrue(message.HasField('optional_double'))
+  test_case.assertTrue(message.HasField('optional_bool'))
+  test_case.assertTrue(message.HasField('optional_string'))
+  test_case.assertTrue(message.HasField('optional_bytes'))
+
+  test_case.assertTrue(message.HasField('optionalgroup'))
+  test_case.assertTrue(message.HasField('optional_nested_message'))
+  test_case.assertTrue(message.HasField('optional_foreign_message'))
+  test_case.assertTrue(message.HasField('optional_import_message'))
+
+  test_case.assertTrue(message.optionalgroup.HasField('a'))
+  test_case.assertTrue(message.optional_nested_message.HasField('bb'))
+  test_case.assertTrue(message.optional_foreign_message.HasField('c'))
+  test_case.assertTrue(message.optional_import_message.HasField('d'))
+
+  test_case.assertTrue(message.HasField('optional_nested_enum'))
+  test_case.assertTrue(message.HasField('optional_foreign_enum'))
+  test_case.assertTrue(message.HasField('optional_import_enum'))
+
+  test_case.assertTrue(message.HasField('optional_string_piece'))
+  test_case.assertTrue(message.HasField('optional_cord'))
+
+  test_case.assertEqual(101, message.optional_int32)
+  test_case.assertEqual(102, message.optional_int64)
+  test_case.assertEqual(103, message.optional_uint32)
+  test_case.assertEqual(104, message.optional_uint64)
+  test_case.assertEqual(105, message.optional_sint32)
+  test_case.assertEqual(106, message.optional_sint64)
+  test_case.assertEqual(107, message.optional_fixed32)
+  test_case.assertEqual(108, message.optional_fixed64)
+  test_case.assertEqual(109, message.optional_sfixed32)
+  test_case.assertEqual(110, message.optional_sfixed64)
+  test_case.assertEqual(111, message.optional_float)
+  test_case.assertEqual(112, message.optional_double)
+  test_case.assertEqual(True, message.optional_bool)
+  test_case.assertEqual('115', message.optional_string)
+  test_case.assertEqual('116', message.optional_bytes)
+
+  test_case.assertEqual(117, message.optionalgroup.a)
+  test_case.assertEqual(118, message.optional_nested_message.bb)
+  test_case.assertEqual(119, message.optional_foreign_message.c)
+  test_case.assertEqual(120, message.optional_import_message.d)
+  test_case.assertEqual(126, message.optional_public_import_message.e)
+  test_case.assertEqual(127, message.optional_lazy_message.bb)
+
+  test_case.assertEqual(unittest_pb2.TestAllTypes.BAZ,
+                        message.optional_nested_enum)
+  test_case.assertEqual(unittest_pb2.FOREIGN_BAZ,
+                        message.optional_foreign_enum)
+  test_case.assertEqual(unittest_import_pb2.IMPORT_BAZ,
+                        message.optional_import_enum)
+
+  # -----------------------------------------------------------------
+
+  test_case.assertEqual(2, len(message.repeated_int32))
+  test_case.assertEqual(2, len(message.repeated_int64))
+  test_case.assertEqual(2, len(message.repeated_uint32))
+  test_case.assertEqual(2, len(message.repeated_uint64))
+  test_case.assertEqual(2, len(message.repeated_sint32))
+  test_case.assertEqual(2, len(message.repeated_sint64))
+  test_case.assertEqual(2, len(message.repeated_fixed32))
+  test_case.assertEqual(2, len(message.repeated_fixed64))
+  test_case.assertEqual(2, len(message.repeated_sfixed32))
+  test_case.assertEqual(2, len(message.repeated_sfixed64))
+  test_case.assertEqual(2, len(message.repeated_float))
+  test_case.assertEqual(2, len(message.repeated_double))
+  test_case.assertEqual(2, len(message.repeated_bool))
+  test_case.assertEqual(2, len(message.repeated_string))
+  test_case.assertEqual(2, len(message.repeated_bytes))
+
+  test_case.assertEqual(2, len(message.repeatedgroup))
+  test_case.assertEqual(2, len(message.repeated_nested_message))
+  test_case.assertEqual(2, len(message.repeated_foreign_message))
+  test_case.assertEqual(2, len(message.repeated_import_message))
+  test_case.assertEqual(2, len(message.repeated_nested_enum))
+  test_case.assertEqual(2, len(message.repeated_foreign_enum))
+  test_case.assertEqual(2, len(message.repeated_import_enum))
+
+  test_case.assertEqual(2, len(message.repeated_string_piece))
+  test_case.assertEqual(2, len(message.repeated_cord))
+
+  test_case.assertEqual(201, message.repeated_int32[0])
+  test_case.assertEqual(202, message.repeated_int64[0])
+  test_case.assertEqual(203, message.repeated_uint32[0])
+  test_case.assertEqual(204, message.repeated_uint64[0])
+  test_case.assertEqual(205, message.repeated_sint32[0])
+  test_case.assertEqual(206, message.repeated_sint64[0])
+  test_case.assertEqual(207, message.repeated_fixed32[0])
+  test_case.assertEqual(208, message.repeated_fixed64[0])
+  test_case.assertEqual(209, message.repeated_sfixed32[0])
+  test_case.assertEqual(210, message.repeated_sfixed64[0])
+  test_case.assertEqual(211, message.repeated_float[0])
+  test_case.assertEqual(212, message.repeated_double[0])
+  test_case.assertEqual(True, message.repeated_bool[0])
+  test_case.assertEqual('215', message.repeated_string[0])
+  test_case.assertEqual('216', message.repeated_bytes[0])
+
+  test_case.assertEqual(217, message.repeatedgroup[0].a)
+  test_case.assertEqual(218, message.repeated_nested_message[0].bb)
+  test_case.assertEqual(219, message.repeated_foreign_message[0].c)
+  test_case.assertEqual(220, message.repeated_import_message[0].d)
+  test_case.assertEqual(227, message.repeated_lazy_message[0].bb)
+
+  test_case.assertEqual(unittest_pb2.TestAllTypes.BAR,
+                        message.repeated_nested_enum[0])
+  test_case.assertEqual(unittest_pb2.FOREIGN_BAR,
+                        message.repeated_foreign_enum[0])
+  test_case.assertEqual(unittest_import_pb2.IMPORT_BAR,
+                        message.repeated_import_enum[0])
+
+  test_case.assertEqual(301, message.repeated_int32[1])
+  test_case.assertEqual(302, message.repeated_int64[1])
+  test_case.assertEqual(303, message.repeated_uint32[1])
+  test_case.assertEqual(304, message.repeated_uint64[1])
+  test_case.assertEqual(305, message.repeated_sint32[1])
+  test_case.assertEqual(306, message.repeated_sint64[1])
+  test_case.assertEqual(307, message.repeated_fixed32[1])
+  test_case.assertEqual(308, message.repeated_fixed64[1])
+  test_case.assertEqual(309, message.repeated_sfixed32[1])
+  test_case.assertEqual(310, message.repeated_sfixed64[1])
+  test_case.assertEqual(311, message.repeated_float[1])
+  test_case.assertEqual(312, message.repeated_double[1])
+  test_case.assertEqual(False, message.repeated_bool[1])
+  test_case.assertEqual('315', message.repeated_string[1])
+  test_case.assertEqual('316', message.repeated_bytes[1])
+
+  test_case.assertEqual(317, message.repeatedgroup[1].a)
+  test_case.assertEqual(318, message.repeated_nested_message[1].bb)
+  test_case.assertEqual(319, message.repeated_foreign_message[1].c)
+  test_case.assertEqual(320, message.repeated_import_message[1].d)
+  test_case.assertEqual(327, message.repeated_lazy_message[1].bb)
+
+  test_case.assertEqual(unittest_pb2.TestAllTypes.BAZ,
+                        message.repeated_nested_enum[1])
+  test_case.assertEqual(unittest_pb2.FOREIGN_BAZ,
+                        message.repeated_foreign_enum[1])
+  test_case.assertEqual(unittest_import_pb2.IMPORT_BAZ,
+                        message.repeated_import_enum[1])
+
+  # -----------------------------------------------------------------
+
+  test_case.assertTrue(message.HasField('default_int32'))
+  test_case.assertTrue(message.HasField('default_int64'))
+  test_case.assertTrue(message.HasField('default_uint32'))
+  test_case.assertTrue(message.HasField('default_uint64'))
+  test_case.assertTrue(message.HasField('default_sint32'))
+  test_case.assertTrue(message.HasField('default_sint64'))
+  test_case.assertTrue(message.HasField('default_fixed32'))
+  test_case.assertTrue(message.HasField('default_fixed64'))
+  test_case.assertTrue(message.HasField('default_sfixed32'))
+  test_case.assertTrue(message.HasField('default_sfixed64'))
+  test_case.assertTrue(message.HasField('default_float'))
+  test_case.assertTrue(message.HasField('default_double'))
+  test_case.assertTrue(message.HasField('default_bool'))
+  test_case.assertTrue(message.HasField('default_string'))
+  test_case.assertTrue(message.HasField('default_bytes'))
+
+  test_case.assertTrue(message.HasField('default_nested_enum'))
+  test_case.assertTrue(message.HasField('default_foreign_enum'))
+  test_case.assertTrue(message.HasField('default_import_enum'))
+
+  test_case.assertEqual(401, message.default_int32)
+  test_case.assertEqual(402, message.default_int64)
+  test_case.assertEqual(403, message.default_uint32)
+  test_case.assertEqual(404, message.default_uint64)
+  test_case.assertEqual(405, message.default_sint32)
+  test_case.assertEqual(406, message.default_sint64)
+  test_case.assertEqual(407, message.default_fixed32)
+  test_case.assertEqual(408, message.default_fixed64)
+  test_case.assertEqual(409, message.default_sfixed32)
+  test_case.assertEqual(410, message.default_sfixed64)
+  test_case.assertEqual(411, message.default_float)
+  test_case.assertEqual(412, message.default_double)
+  test_case.assertEqual(False, message.default_bool)
+  test_case.assertEqual('415', message.default_string)
+  test_case.assertEqual('416', message.default_bytes)
+
+  test_case.assertEqual(unittest_pb2.TestAllTypes.FOO,
+                        message.default_nested_enum)
+  test_case.assertEqual(unittest_pb2.FOREIGN_FOO,
+                        message.default_foreign_enum)
+  test_case.assertEqual(unittest_import_pb2.IMPORT_FOO,
+                        message.default_import_enum)
+
 def GoldenFile(filename):
   """Finds the given golden file and returns a file object representing it."""
 
@@ -359,10 +569,83 @@ def GoldenFile(filename):
   while os.path.exists(path):
     if os.path.exists(os.path.join(path, 'src/google/protobuf')):
       # Found it.  Load the golden file from the testdata directory.
-      return file(os.path.join(path, 'src/google/protobuf/testdata', filename))
+      full_path = os.path.join(path, 'src/google/protobuf/testdata', filename)
+      return open(full_path, 'rb')
     path = os.path.join(path, '..')
 
   raise RuntimeError(
     'Could not find golden files.  This test must be run from within the '
     'protobuf source package so that it can read test data files from the '
     'C++ source tree.')
+
+
+def SetAllPackedFields(message):
+  """Sets every field in the message to a unique value.
+
+  Args:
+    message: A unittest_pb2.TestPackedTypes instance.
+  """
+  message.packed_int32.extend([601, 701])
+  message.packed_int64.extend([602, 702])
+  message.packed_uint32.extend([603, 703])
+  message.packed_uint64.extend([604, 704])
+  message.packed_sint32.extend([605, 705])
+  message.packed_sint64.extend([606, 706])
+  message.packed_fixed32.extend([607, 707])
+  message.packed_fixed64.extend([608, 708])
+  message.packed_sfixed32.extend([609, 709])
+  message.packed_sfixed64.extend([610, 710])
+  message.packed_float.extend([611.0, 711.0])
+  message.packed_double.extend([612.0, 712.0])
+  message.packed_bool.extend([True, False])
+  message.packed_enum.extend([unittest_pb2.FOREIGN_BAR,
+                              unittest_pb2.FOREIGN_BAZ])
+
+
+def SetAllPackedExtensions(message):
+  """Sets every extension in the message to a unique value.
+
+  Args:
+    message: A unittest_pb2.TestPackedExtensions instance.
+  """
+  extensions = message.Extensions
+  pb2 = unittest_pb2
+
+  extensions[pb2.packed_int32_extension].extend([601, 701])
+  extensions[pb2.packed_int64_extension].extend([602, 702])
+  extensions[pb2.packed_uint32_extension].extend([603, 703])
+  extensions[pb2.packed_uint64_extension].extend([604, 704])
+  extensions[pb2.packed_sint32_extension].extend([605, 705])
+  extensions[pb2.packed_sint64_extension].extend([606, 706])
+  extensions[pb2.packed_fixed32_extension].extend([607, 707])
+  extensions[pb2.packed_fixed64_extension].extend([608, 708])
+  extensions[pb2.packed_sfixed32_extension].extend([609, 709])
+  extensions[pb2.packed_sfixed64_extension].extend([610, 710])
+  extensions[pb2.packed_float_extension].extend([611.0, 711.0])
+  extensions[pb2.packed_double_extension].extend([612.0, 712.0])
+  extensions[pb2.packed_bool_extension].extend([True, False])
+  extensions[pb2.packed_enum_extension].extend([unittest_pb2.FOREIGN_BAR,
+                                                unittest_pb2.FOREIGN_BAZ])
+
+
+def SetAllUnpackedFields(message):
+  """Sets every field in the message to a unique value.
+
+  Args:
+    message: A unittest_pb2.TestUnpackedTypes instance.
+  """
+  message.unpacked_int32.extend([601, 701])
+  message.unpacked_int64.extend([602, 702])
+  message.unpacked_uint32.extend([603, 703])
+  message.unpacked_uint64.extend([604, 704])
+  message.unpacked_sint32.extend([605, 705])
+  message.unpacked_sint64.extend([606, 706])
+  message.unpacked_fixed32.extend([607, 707])
+  message.unpacked_fixed64.extend([608, 708])
+  message.unpacked_sfixed32.extend([609, 709])
+  message.unpacked_sfixed64.extend([610, 710])
+  message.unpacked_float.extend([611.0, 711.0])
+  message.unpacked_double.extend([612.0, 712.0])
+  message.unpacked_bool.extend([True, False])
+  message.unpacked_enum.extend([unittest_pb2.FOREIGN_BAR,
+                                unittest_pb2.FOREIGN_BAZ])

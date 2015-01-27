@@ -33,16 +33,17 @@
 __author__ = 'robinson@google.com (Will Robinson)'
 
 import struct
+from google.protobuf import descriptor
 from google.protobuf import message
 
 
 TAG_TYPE_BITS = 3  # Number of bits used to hold type info in a proto tag.
-_TAG_TYPE_MASK = (1 << TAG_TYPE_BITS) - 1  # 0x7
+TAG_TYPE_MASK = (1 << TAG_TYPE_BITS) - 1  # 0x7
 
 # These numbers identify the wire type of a protocol buffer value.
 # We use the least-significant TAG_TYPE_BITS bits of the varint-encoded
 # tag-and-type to store one of these WIRETYPE_* constants.
-# These values must match WireType enum in //net/proto2/public/wire_format.h.
+# These values must match WireType enum in google/protobuf/wire_format.h.
 WIRETYPE_VARINT = 0
 WIRETYPE_FIXED64 = 1
 WIRETYPE_LENGTH_DELIMITED = 2
@@ -64,6 +65,8 @@ UINT64_MAX = (1 << 64) - 1
 # "struct" format strings that will encode/decode the specified formats.
 FORMAT_UINT32_LITTLE_ENDIAN = '<I'
 FORMAT_UINT64_LITTLE_ENDIAN = '<Q'
+FORMAT_FLOAT_LITTLE_ENDIAN = '<f'
+FORMAT_DOUBLE_LITTLE_ENDIAN = '<d'
 
 
 # We'll have to provide alternate implementations of AppendLittleEndian*() on
@@ -91,7 +94,7 @@ def UnpackTag(tag):
   """The inverse of PackTag().  Given an unsigned 32-bit number,
   returns a (field_number, wire_type) tuple.
   """
-  return (tag >> TAG_TYPE_BITS), (tag & _TAG_TYPE_MASK)
+  return (tag >> TAG_TYPE_BITS), (tag & TAG_TYPE_MASK)
 
 
 def ZigZagEncode(value):
@@ -120,6 +123,10 @@ def Int32ByteSize(field_number, int32):
   return Int64ByteSize(field_number, int32)
 
 
+def Int32ByteSizeNoTag(int32):
+  return _VarUInt64ByteSizeNoTag(0xffffffffffffffff & int32)
+
+
 def Int64ByteSize(field_number, int64):
   # Have to convert to uint before calling UInt64ByteSize().
   return UInt64ByteSize(field_number, 0xffffffffffffffff & int64)
@@ -130,7 +137,7 @@ def UInt32ByteSize(field_number, uint32):
 
 
 def UInt64ByteSize(field_number, uint64):
-  return _TagByteSize(field_number) + _VarUInt64ByteSizeNoTag(uint64)
+  return TagByteSize(field_number) + _VarUInt64ByteSizeNoTag(uint64)
 
 
 def SInt32ByteSize(field_number, int32):
@@ -142,31 +149,31 @@ def SInt64ByteSize(field_number, int64):
 
 
 def Fixed32ByteSize(field_number, fixed32):
-  return _TagByteSize(field_number) + 4
+  return TagByteSize(field_number) + 4
 
 
 def Fixed64ByteSize(field_number, fixed64):
-  return _TagByteSize(field_number) + 8
+  return TagByteSize(field_number) + 8
 
 
 def SFixed32ByteSize(field_number, sfixed32):
-  return _TagByteSize(field_number) + 4
+  return TagByteSize(field_number) + 4
 
 
 def SFixed64ByteSize(field_number, sfixed64):
-  return _TagByteSize(field_number) + 8
+  return TagByteSize(field_number) + 8
 
 
 def FloatByteSize(field_number, flt):
-  return _TagByteSize(field_number) + 4
+  return TagByteSize(field_number) + 4
 
 
 def DoubleByteSize(field_number, double):
-  return _TagByteSize(field_number) + 8
+  return TagByteSize(field_number) + 8
 
 
 def BoolByteSize(field_number, b):
-  return _TagByteSize(field_number) + 1
+  return TagByteSize(field_number) + 1
 
 
 def EnumByteSize(field_number, enum):
@@ -178,18 +185,18 @@ def StringByteSize(field_number, string):
 
 
 def BytesByteSize(field_number, b):
-  return (_TagByteSize(field_number)
+  return (TagByteSize(field_number)
           + _VarUInt64ByteSizeNoTag(len(b))
           + len(b))
 
 
 def GroupByteSize(field_number, message):
-  return (2 * _TagByteSize(field_number)  # START and END group.
+  return (2 * TagByteSize(field_number)  # START and END group.
           + message.ByteSize())
 
 
 def MessageByteSize(field_number, message):
-  return (_TagByteSize(field_number)
+  return (TagByteSize(field_number)
           + _VarUInt64ByteSizeNoTag(message.ByteSize())
           + message.ByteSize())
 
@@ -199,7 +206,7 @@ def MessageSetItemByteSize(field_number, msg):
   # There are 2 tags for the beginning and ending of the repeated group, that
   # is field number 1, one with field number 2 (type_id) and one with field
   # number 3 (message).
-  total_size = (2 * _TagByteSize(1) + _TagByteSize(2) + _TagByteSize(3))
+  total_size = (2 * TagByteSize(1) + TagByteSize(2) + TagByteSize(3))
 
   # Add the number of bytes for type_id.
   total_size += _VarUInt64ByteSizeNoTag(field_number)
@@ -214,23 +221,48 @@ def MessageSetItemByteSize(field_number, msg):
   return total_size
 
 
-# Private helper functions for the *ByteSize() functions above.
-
-
-def _TagByteSize(field_number):
+def TagByteSize(field_number):
   """Returns the bytes required to serialize a tag with this field number."""
   # Just pass in type 0, since the type won't affect the tag+type size.
   return _VarUInt64ByteSizeNoTag(PackTag(field_number, 0))
 
 
+# Private helper function for the *ByteSize() functions above.
+
 def _VarUInt64ByteSizeNoTag(uint64):
-  """Returns the bytes required to serialize a single varint.
+  """Returns the number of bytes required to serialize a single varint
+  using boundary value comparisons. (unrolled loop optimization -WPierce)
   uint64 must be unsigned.
   """
+  if uint64 <= 0x7f: return 1
+  if uint64 <= 0x3fff: return 2
+  if uint64 <= 0x1fffff: return 3
+  if uint64 <= 0xfffffff: return 4
+  if uint64 <= 0x7ffffffff: return 5
+  if uint64 <= 0x3ffffffffff: return 6
+  if uint64 <= 0x1ffffffffffff: return 7
+  if uint64 <= 0xffffffffffffff: return 8
+  if uint64 <= 0x7fffffffffffffff: return 9
   if uint64 > UINT64_MAX:
     raise message.EncodeError('Value out of range: %d' % uint64)
-  bytes = 1
-  while uint64 > 0x7f:
-    bytes += 1
-    uint64 >>= 7
-  return bytes
+  return 10
+
+
+NON_PACKABLE_TYPES = (
+  descriptor.FieldDescriptor.TYPE_STRING,
+  descriptor.FieldDescriptor.TYPE_GROUP,
+  descriptor.FieldDescriptor.TYPE_MESSAGE,
+  descriptor.FieldDescriptor.TYPE_BYTES
+)
+
+
+def IsTypePackable(field_type):
+  """Return true iff packable = true is valid for fields of this type.
+
+  Args:
+    field_type: a FieldDescriptor::Type value.
+
+  Returns:
+    True iff fields of this type are packable.
+  """
+  return field_type not in NON_PACKABLE_TYPES

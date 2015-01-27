@@ -28,21 +28,30 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# TODO(robinson): We probably need to provide deep-copy methods for
-# descriptor types.  When a FieldDescriptor is passed into
-# Descriptor.__init__(), we should make a deep copy and then set
-# containing_type on it.  Alternatively, we could just get
-# rid of containing_type (iit's not needed for reflection.py, at least).
-#
-# TODO(robinson): Print method?
-#
-# TODO(robinson): Useful __repr__?
-
 """Descriptors essentially contain exactly the information found in a .proto
 file, in types that make this information accessible in Python.
 """
 
 __author__ = 'robinson@google.com (Will Robinson)'
+
+
+from google.protobuf.internal import api_implementation
+
+
+if api_implementation.Type() == 'cpp':
+  if api_implementation.Version() == 2:
+    from google.protobuf.internal.cpp import _message
+  else:
+    from google.protobuf.internal import cpp_message
+
+
+class Error(Exception):
+  """Base error for this module."""
+
+
+class TypeTransformationError(Error):
+  """Error transforming between python proto type and corresponding C++ type."""
+
 
 class DescriptorBase(object):
 
@@ -50,6 +59,13 @@ class DescriptorBase(object):
 
   This class is the base of all descriptor classes. It provides common options
   related functionaility.
+
+  Attributes:
+    has_options:  True if the descriptor has non-default options.  Usually it
+        is not necessary to read this -- just call GetOptions() which will
+        happily return the default instance.  However, it's sometimes useful
+        for efficiency, and also useful inside the protobuf implementation to
+        avoid some bootstrapping issues.
   """
 
   def __init__(self, options, options_class_name):
@@ -59,6 +75,21 @@ class DescriptorBase(object):
     """
     self._options = options
     self._options_class_name = options_class_name
+
+    # Does this descriptor have non-default options?
+    self.has_options = options is not None
+
+  def _SetOptions(self, options, options_class_name):
+    """Sets the descriptor's options
+
+    This function is used in generated proto2 files to update descriptor
+    options. It must not be used outside proto2.
+    """
+    self._options = options
+    self._options_class_name = options_class_name
+
+    # Does this descriptor have non-default options?
+    self.has_options = options is not None
 
   def GetOptions(self):
     """Retrieves descriptor options.
@@ -78,7 +109,70 @@ class DescriptorBase(object):
     return self._options
 
 
-class Descriptor(DescriptorBase):
+class _NestedDescriptorBase(DescriptorBase):
+  """Common class for descriptors that can be nested."""
+
+  def __init__(self, options, options_class_name, name, full_name,
+               file, containing_type, serialized_start=None,
+               serialized_end=None):
+    """Constructor.
+
+    Args:
+      options: Protocol message options or None
+        to use default message options.
+      options_class_name: (str) The class name of the above options.
+
+      name: (str) Name of this protocol message type.
+      full_name: (str) Fully-qualified name of this protocol message type,
+        which will include protocol "package" name and the name of any
+        enclosing types.
+      file: (FileDescriptor) Reference to file info.
+      containing_type: if provided, this is a nested descriptor, with this
+        descriptor as parent, otherwise None.
+      serialized_start: The start index (inclusive) in block in the
+        file.serialized_pb that describes this descriptor.
+      serialized_end: The end index (exclusive) in block in the
+        file.serialized_pb that describes this descriptor.
+    """
+    super(_NestedDescriptorBase, self).__init__(
+        options, options_class_name)
+
+    self.name = name
+    # TODO(falk): Add function to calculate full_name instead of having it in
+    #             memory?
+    self.full_name = full_name
+    self.file = file
+    self.containing_type = containing_type
+
+    self._serialized_start = serialized_start
+    self._serialized_end = serialized_end
+
+  def GetTopLevelContainingType(self):
+    """Returns the root if this is a nested type, or itself if its the root."""
+    desc = self
+    while desc.containing_type is not None:
+      desc = desc.containing_type
+    return desc
+
+  def CopyToProto(self, proto):
+    """Copies this to the matching proto in descriptor_pb2.
+
+    Args:
+      proto: An empty proto instance from descriptor_pb2.
+
+    Raises:
+      Error: If self couldnt be serialized, due to to few constructor arguments.
+    """
+    if (self.file is not None and
+        self._serialized_start is not None and
+        self._serialized_end is not None):
+      proto.ParseFromString(self.file.serialized_pb[
+          self._serialized_start:self._serialized_end])
+    else:
+      raise Error('Descriptor does not contain serialization.')
+
+
+class Descriptor(_NestedDescriptorBase):
 
   """Descriptor for a protocol message type.
 
@@ -89,10 +183,8 @@ class Descriptor(DescriptorBase):
       which will include protocol "package" name and the name of any
       enclosing types.
 
-    filename: (str) Name of the .proto file containing this message.
-
     containing_type: (Descriptor) Reference to the descriptor of the
-      type containing us, or None if we have no containing type.
+      type containing us, or None if this is top-level.
 
     fields: (list of FieldDescriptors) Field descriptors for all
       fields in this type.
@@ -123,20 +215,28 @@ class Descriptor(DescriptorBase):
       objects as |extensions|, but indexed by "name" attribute of each
       FieldDescriptor.
 
+    is_extendable:  Does this type define any extension ranges?
+
     options: (descriptor_pb2.MessageOptions) Protocol message options or None
       to use default message options.
+
+    file: (FileDescriptor) Reference to file descriptor.
   """
 
-  def __init__(self, name, full_name, filename, containing_type,
-               fields, nested_types, enum_types, extensions, options=None):
+  def __init__(self, name, full_name, filename, containing_type, fields,
+               nested_types, enum_types, extensions, options=None,
+               is_extendable=True, extension_ranges=None, file=None,
+               serialized_start=None, serialized_end=None):
     """Arguments to __init__() are as described in the description
     of Descriptor fields above.
+
+    Note that filename is an obsolete argument, that is not used anymore.
+    Please use file.name to access this as an attribute.
     """
-    super(Descriptor, self).__init__(options, 'MessageOptions')
-    self.name = name
-    self.full_name = full_name
-    self.filename = filename
-    self.containing_type = containing_type
+    super(Descriptor, self).__init__(
+        options, 'MessageOptions', name, full_name, file,
+        containing_type, serialized_start=serialized_start,
+        serialized_end=serialized_start)
 
     # We have fields in addition to fields_by_name and fields_by_number,
     # so that:
@@ -163,6 +263,38 @@ class Descriptor(DescriptorBase):
     for extension in self.extensions:
       extension.extension_scope = self
     self.extensions_by_name = dict((f.name, f) for f in extensions)
+    self.is_extendable = is_extendable
+    self.extension_ranges = extension_ranges
+
+    self._serialized_start = serialized_start
+    self._serialized_end = serialized_end
+
+  def EnumValueName(self, enum, value):
+    """Returns the string name of an enum value.
+
+    This is just a small helper method to simplify a common operation.
+
+    Args:
+      enum: string name of the Enum.
+      value: int, value of the enum.
+
+    Returns:
+      string name of the enum value.
+
+    Raises:
+      KeyError if either the Enum doesn't exist or the value is not a valid
+        value for the enum.
+    """
+    return self.enum_types_by_name[enum].values_by_number[value].name
+
+  def CopyToProto(self, proto):
+    """Copies this to a descriptor_pb2.DescriptorProto.
+
+    Args:
+      proto: An empty descriptor_pb2.DescriptorProto.
+    """
+    # This function is overriden to give a better doc comment.
+    super(Descriptor, self).CopyToProto(proto)
 
 
 # TODO(robinson): We should have aggressive checking here,
@@ -180,7 +312,7 @@ class FieldDescriptor(DescriptorBase):
 
   """Descriptor for a single field in a .proto file.
 
-  A FieldDescriptor instance has the following attriubtes:
+  A FieldDescriptor instance has the following attributes:
 
     name: (str) Name of this field, exactly as it appears in .proto.
     full_name: (str) Name of this field, including containing scope.  This is
@@ -195,6 +327,8 @@ class FieldDescriptor(DescriptorBase):
 
     label: (One of the LABEL_* constants below) Tells whether this
       field is optional, required, or repeated.
+    has_default_value: (bool) True if this field has a default value defined,
+      otherwise false.
     default_value: (Varies) Default value of this field.  Only
       meaningful for non-repeated scalar fields.  Repeated fields
       should always set this to [], and non-repeated composite
@@ -261,6 +395,27 @@ class FieldDescriptor(DescriptorBase):
   CPPTYPE_MESSAGE     = 10
   MAX_CPPTYPE         = 10
 
+  _PYTHON_TO_CPP_PROTO_TYPE_MAP = {
+      TYPE_DOUBLE: CPPTYPE_DOUBLE,
+      TYPE_FLOAT: CPPTYPE_FLOAT,
+      TYPE_ENUM: CPPTYPE_ENUM,
+      TYPE_INT64: CPPTYPE_INT64,
+      TYPE_SINT64: CPPTYPE_INT64,
+      TYPE_SFIXED64: CPPTYPE_INT64,
+      TYPE_UINT64: CPPTYPE_UINT64,
+      TYPE_FIXED64: CPPTYPE_UINT64,
+      TYPE_INT32: CPPTYPE_INT32,
+      TYPE_SFIXED32: CPPTYPE_INT32,
+      TYPE_SINT32: CPPTYPE_INT32,
+      TYPE_UINT32: CPPTYPE_UINT32,
+      TYPE_FIXED32: CPPTYPE_UINT32,
+      TYPE_BYTES: CPPTYPE_STRING,
+      TYPE_STRING: CPPTYPE_STRING,
+      TYPE_BOOL: CPPTYPE_BOOL,
+      TYPE_MESSAGE: CPPTYPE_MESSAGE,
+      TYPE_GROUP: CPPTYPE_MESSAGE
+      }
+
   # Must be consistent with C++ FieldDescriptor::Label enum in
   # descriptor.h.
   #
@@ -272,7 +427,8 @@ class FieldDescriptor(DescriptorBase):
 
   def __init__(self, name, full_name, index, number, type, cpp_type, label,
                default_value, message_type, enum_type, containing_type,
-               is_extension, extension_scope, options=None):
+               is_extension, extension_scope, options=None,
+               has_default_value=True):
     """The arguments are as described in the description of FieldDescriptor
     attributes above.
 
@@ -288,15 +444,49 @@ class FieldDescriptor(DescriptorBase):
     self.type = type
     self.cpp_type = cpp_type
     self.label = label
+    self.has_default_value = has_default_value
     self.default_value = default_value
     self.containing_type = containing_type
     self.message_type = message_type
     self.enum_type = enum_type
     self.is_extension = is_extension
     self.extension_scope = extension_scope
+    if api_implementation.Type() == 'cpp':
+      if is_extension:
+        if api_implementation.Version() == 2:
+          self._cdescriptor = _message.GetExtensionDescriptor(full_name)
+        else:
+          self._cdescriptor = cpp_message.GetExtensionDescriptor(full_name)
+      else:
+        if api_implementation.Version() == 2:
+          self._cdescriptor = _message.GetFieldDescriptor(full_name)
+        else:
+          self._cdescriptor = cpp_message.GetFieldDescriptor(full_name)
+    else:
+      self._cdescriptor = None
+
+  @staticmethod
+  def ProtoTypeToCppProtoType(proto_type):
+    """Converts from a Python proto type to a C++ Proto Type.
+
+    The Python ProtocolBuffer classes specify both the 'Python' datatype and the
+    'C++' datatype - and they're not the same. This helper method should
+    translate from one to another.
+
+    Args:
+      proto_type: the Python proto type (descriptor.FieldDescriptor.TYPE_*)
+    Returns:
+      descriptor.FieldDescriptor.CPPTYPE_*, the C++ type.
+    Raises:
+      TypeTransformationError: when the Python proto type isn't known.
+    """
+    try:
+      return FieldDescriptor._PYTHON_TO_CPP_PROTO_TYPE_MAP[proto_type]
+    except KeyError:
+      raise TypeTransformationError('Unknown proto_type: %s' % proto_type)
 
 
-class EnumDescriptor(DescriptorBase):
+class EnumDescriptor(_NestedDescriptorBase):
 
   """Descriptor for an enum defined in a .proto file.
 
@@ -305,7 +495,6 @@ class EnumDescriptor(DescriptorBase):
     name: (str) Name of the enum type.
     full_name: (str) Full name of the type, including package name
       and any enclosing type(s).
-    filename: (str) Name of the .proto file in which this appears.
 
     values: (list of EnumValueDescriptors) List of the values
       in this enum.
@@ -317,23 +506,41 @@ class EnumDescriptor(DescriptorBase):
       type of this enum, or None if this is an enum defined at the
       top level in a .proto file.  Set by Descriptor's constructor
       if we're passed into one.
+    file: (FileDescriptor) Reference to file descriptor.
     options: (descriptor_pb2.EnumOptions) Enum options message or
       None to use default enum options.
   """
 
   def __init__(self, name, full_name, filename, values,
-               containing_type=None, options=None):
-    """Arguments are as described in the attribute description above."""
-    super(EnumDescriptor, self).__init__(options, 'EnumOptions')
-    self.name = name
-    self.full_name = full_name
-    self.filename = filename
+               containing_type=None, options=None, file=None,
+               serialized_start=None, serialized_end=None):
+    """Arguments are as described in the attribute description above.
+
+    Note that filename is an obsolete argument, that is not used anymore.
+    Please use file.name to access this as an attribute.
+    """
+    super(EnumDescriptor, self).__init__(
+        options, 'EnumOptions', name, full_name, file,
+        containing_type, serialized_start=serialized_start,
+        serialized_end=serialized_start)
+
     self.values = values
     for value in self.values:
       value.type = self
     self.values_by_name = dict((v.name, v) for v in values)
     self.values_by_number = dict((v.number, v) for v in values)
-    self.containing_type = containing_type
+
+    self._serialized_start = serialized_start
+    self._serialized_end = serialized_end
+
+  def CopyToProto(self, proto):
+    """Copies this to a descriptor_pb2.EnumDescriptorProto.
+
+    Args:
+      proto: An empty descriptor_pb2.EnumDescriptorProto.
+    """
+    # This function is overriden to give a better doc comment.
+    super(EnumDescriptor, self).CopyToProto(proto)
 
 
 class EnumValueDescriptor(DescriptorBase):
@@ -360,7 +567,7 @@ class EnumValueDescriptor(DescriptorBase):
     self.type = type
 
 
-class ServiceDescriptor(DescriptorBase):
+class ServiceDescriptor(_NestedDescriptorBase):
 
   """Descriptor for a service.
 
@@ -372,12 +579,15 @@ class ServiceDescriptor(DescriptorBase):
       service.
     options: (descriptor_pb2.ServiceOptions) Service options message or
       None to use default service options.
+    file: (FileDescriptor) Reference to file info.
   """
 
-  def __init__(self, name, full_name, index, methods, options=None):
-    super(ServiceDescriptor, self).__init__(options, 'ServiceOptions')
-    self.name = name
-    self.full_name = full_name
+  def __init__(self, name, full_name, index, methods, options=None, file=None,
+               serialized_start=None, serialized_end=None):
+    super(ServiceDescriptor, self).__init__(
+        options, 'ServiceOptions', name, full_name, file,
+        None, serialized_start=serialized_start,
+        serialized_end=serialized_end)
     self.index = index
     self.methods = methods
     # Set the containing service for each method in this service.
@@ -390,6 +600,15 @@ class ServiceDescriptor(DescriptorBase):
       if name == method.name:
         return method
     return None
+
+  def CopyToProto(self, proto):
+    """Copies this to a descriptor_pb2.ServiceDescriptorProto.
+
+    Args:
+      proto: An empty descriptor_pb2.ServiceDescriptorProto.
+    """
+    # This function is overriden to give a better doc comment.
+    super(ServiceDescriptor, self).CopyToProto(proto)
 
 
 class MethodDescriptor(DescriptorBase):
@@ -423,6 +642,39 @@ class MethodDescriptor(DescriptorBase):
     self.output_type = output_type
 
 
+class FileDescriptor(DescriptorBase):
+  """Descriptor for a file. Mimics the descriptor_pb2.FileDescriptorProto.
+
+  name: name of file, relative to root of source tree.
+  package: name of the package
+  serialized_pb: (str) Byte string of serialized
+    descriptor_pb2.FileDescriptorProto.
+  """
+
+  def __init__(self, name, package, options=None, serialized_pb=None):
+    """Constructor."""
+    super(FileDescriptor, self).__init__(options, 'FileOptions')
+
+    self.message_types_by_name = {}
+    self.name = name
+    self.package = package
+    self.serialized_pb = serialized_pb
+    if (api_implementation.Type() == 'cpp' and
+        self.serialized_pb is not None):
+      if api_implementation.Version() == 2:
+        _message.BuildFile(self.serialized_pb)
+      else:
+        cpp_message.BuildFile(self.serialized_pb)
+
+  def CopyToProto(self, proto):
+    """Copies this to a descriptor_pb2.FileDescriptorProto.
+
+    Args:
+      proto: An empty descriptor_pb2.FileDescriptorProto.
+    """
+    proto.ParseFromString(self.serialized_pb)
+
+
 def _ParseOptions(message, string):
   """Parses serialized options.
 
@@ -430,4 +682,32 @@ def _ParseOptions(message, string):
   proto2 files. It must not be used outside proto2.
   """
   message.ParseFromString(string)
-  return message;
+  return message
+
+
+def MakeDescriptor(desc_proto, package=''):
+  """Make a protobuf Descriptor given a DescriptorProto protobuf.
+
+  Args:
+    desc_proto: The descriptor_pb2.DescriptorProto protobuf message.
+    package: Optional package name for the new message Descriptor (string).
+
+  Returns:
+    A Descriptor for protobuf messages.
+  """
+  full_message_name = [desc_proto.name]
+  if package: full_message_name.insert(0, package)
+  fields = []
+  for field_proto in desc_proto.field:
+    full_name = '.'.join(full_message_name + [field_proto.name])
+    field = FieldDescriptor(
+        field_proto.name, full_name, field_proto.number - 1,
+        field_proto.number, field_proto.type,
+        FieldDescriptor.ProtoTypeToCppProtoType(field_proto.type),
+        field_proto.label, None, None, None, None, False, None,
+        has_default_value=False)
+    fields.append(field)
+
+  desc_name = '.'.join(full_message_name)
+  return Descriptor(desc_proto.name, desc_name, None, None, fields,
+                    [], [], [])
