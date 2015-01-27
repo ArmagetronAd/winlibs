@@ -37,8 +37,8 @@
 
 #include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/descriptor.h>
-#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/wire_format.h>
 #include <google/protobuf/unittest.pb.h>
 #include <google/protobuf/test_util.h>
@@ -46,13 +46,12 @@
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/testing/googletest.h>
 #include <gtest/gtest.h>
+#include <google/protobuf/stubs/stl_util.h>
 
 namespace google {
 namespace protobuf {
 
 using internal::WireFormat;
-
-namespace {
 
 class UnknownFieldSetTest : public testing::Test {
  protected:
@@ -67,7 +66,12 @@ class UnknownFieldSetTest : public testing::Test {
   const UnknownField* GetField(const string& name) {
     const FieldDescriptor* field = descriptor_->FindFieldByName(name);
     if (field == NULL) return NULL;
-    return unknown_fields_->FindFieldByNumber(field->number());
+    for (int i = 0; i < unknown_fields_->field_count(); i++) {
+      if (unknown_fields_->field(i).number() == field->number()) {
+        return &unknown_fields_->field(i);
+      }
+    }
+    return NULL;
   }
 
   // Constructs a protocol buffer which contains fields with all the same
@@ -79,12 +83,10 @@ class UnknownFieldSetTest : public testing::Test {
       bizarro_message.mutable_unknown_fields();
     for (int i = 0; i < unknown_fields_->field_count(); i++) {
       const UnknownField& unknown_field = unknown_fields_->field(i);
-      UnknownField* bizarro_field =
-        bizarro_unknown_fields->AddField(unknown_field.number());
-      if (unknown_field.varint_size() == 0) {
-        bizarro_field->add_varint(1);
+      if (unknown_field.type() == UnknownField::TYPE_VARINT) {
+        bizarro_unknown_fields->AddFixed32(unknown_field.number(), 1);
       } else {
-        bizarro_field->add_fixed32(1);
+        bizarro_unknown_fields->AddVarint(unknown_field.number(), 1);
       }
     }
 
@@ -103,71 +105,100 @@ class UnknownFieldSetTest : public testing::Test {
   UnknownFieldSet* unknown_fields_;
 };
 
-TEST_F(UnknownFieldSetTest, Index) {
-  for (int i = 0; i < unknown_fields_->field_count(); i++) {
-    EXPECT_EQ(i, unknown_fields_->field(i).index());
-  }
-}
+namespace {
 
-TEST_F(UnknownFieldSetTest, FindFieldByNumber) {
-  // All fields of TestAllTypes should be present.  Fields that are not valid
-  // field numbers of TestAllTypes should NOT be present.
+TEST_F(UnknownFieldSetTest, AllFieldsPresent) {
+  // All fields of TestAllTypes should be present, in numeric order (because
+  // that's the order we parsed them in).  Fields that are not valid field
+  // numbers of TestAllTypes should NOT be present.
+
+  int pos = 0;
 
   for (int i = 0; i < 1000; i++) {
-    if (descriptor_->FindFieldByNumber(i) == NULL) {
-      EXPECT_TRUE(unknown_fields_->FindFieldByNumber(i) == NULL);
-    } else {
-      EXPECT_TRUE(unknown_fields_->FindFieldByNumber(i) != NULL);
+    const FieldDescriptor* field = descriptor_->FindFieldByNumber(i);
+    if (field != NULL) {
+      ASSERT_LT(pos, unknown_fields_->field_count());
+      EXPECT_EQ(i, unknown_fields_->field(pos++).number());
+      if (field->is_repeated()) {
+        // Should have a second instance.
+        ASSERT_LT(pos, unknown_fields_->field_count());
+        EXPECT_EQ(i, unknown_fields_->field(pos++).number());
+      }
     }
   }
+  EXPECT_EQ(unknown_fields_->field_count(), pos);
 }
 
 TEST_F(UnknownFieldSetTest, Varint) {
   const UnknownField* field = GetField("optional_int32");
   ASSERT_TRUE(field != NULL);
 
-  ASSERT_EQ(1, field->varint_size());
-  EXPECT_EQ(all_fields_.optional_int32(), field->varint(0));
+  ASSERT_EQ(UnknownField::TYPE_VARINT, field->type());
+  EXPECT_EQ(all_fields_.optional_int32(), field->varint());
 }
 
 TEST_F(UnknownFieldSetTest, Fixed32) {
   const UnknownField* field = GetField("optional_fixed32");
   ASSERT_TRUE(field != NULL);
 
-  ASSERT_EQ(1, field->fixed32_size());
-  EXPECT_EQ(all_fields_.optional_fixed32(), field->fixed32(0));
+  ASSERT_EQ(UnknownField::TYPE_FIXED32, field->type());
+  EXPECT_EQ(all_fields_.optional_fixed32(), field->fixed32());
 }
 
 TEST_F(UnknownFieldSetTest, Fixed64) {
   const UnknownField* field = GetField("optional_fixed64");
   ASSERT_TRUE(field != NULL);
 
-  ASSERT_EQ(1, field->fixed64_size());
-  EXPECT_EQ(all_fields_.optional_fixed64(), field->fixed64(0));
+  ASSERT_EQ(UnknownField::TYPE_FIXED64, field->type());
+  EXPECT_EQ(all_fields_.optional_fixed64(), field->fixed64());
 }
 
 TEST_F(UnknownFieldSetTest, LengthDelimited) {
   const UnknownField* field = GetField("optional_string");
   ASSERT_TRUE(field != NULL);
 
-  ASSERT_EQ(1, field->length_delimited_size());
-  EXPECT_EQ(all_fields_.optional_string(), field->length_delimited(0));
+  ASSERT_EQ(UnknownField::TYPE_LENGTH_DELIMITED, field->type());
+  EXPECT_EQ(all_fields_.optional_string(), field->length_delimited());
 }
 
 TEST_F(UnknownFieldSetTest, Group) {
   const UnknownField* field = GetField("optionalgroup");
   ASSERT_TRUE(field != NULL);
 
-  ASSERT_EQ(1, field->group_size());
-  EXPECT_EQ(1, field->group(0).field_count());
+  ASSERT_EQ(UnknownField::TYPE_GROUP, field->type());
+  ASSERT_EQ(1, field->group().field_count());
 
-  const UnknownField& nested_field = field->group(0).field(0);
+  const UnknownField& nested_field = field->group().field(0);
   const FieldDescriptor* nested_field_descriptor =
     unittest::TestAllTypes::OptionalGroup::descriptor()->FindFieldByName("a");
   ASSERT_TRUE(nested_field_descriptor != NULL);
 
   EXPECT_EQ(nested_field_descriptor->number(), nested_field.number());
-  EXPECT_EQ(all_fields_.optionalgroup().a(), nested_field.varint(0));
+  ASSERT_EQ(UnknownField::TYPE_VARINT, nested_field.type());
+  EXPECT_EQ(all_fields_.optionalgroup().a(), nested_field.varint());
+}
+
+TEST_F(UnknownFieldSetTest, SerializeFastAndSlowAreEquivalent) {
+  int size = WireFormat::ComputeUnknownFieldsSize(
+      empty_message_.unknown_fields());
+  string slow_buffer;
+  string fast_buffer;
+  slow_buffer.resize(size);
+  fast_buffer.resize(size);
+
+  uint8* target = reinterpret_cast<uint8*>(string_as_array(&fast_buffer));
+  uint8* result = WireFormat::SerializeUnknownFieldsToArray(
+          empty_message_.unknown_fields(), target);
+  EXPECT_EQ(size, result - target);
+
+  {
+    io::ArrayOutputStream raw_stream(string_as_array(&slow_buffer), size, 1);
+    io::CodedOutputStream output_stream(&raw_stream);
+    WireFormat::SerializeUnknownFields(empty_message_.unknown_fields(),
+                                       &output_stream);
+    ASSERT_FALSE(output_stream.HadError());
+  }
+  EXPECT_TRUE(fast_buffer == slow_buffer);
 }
 
 TEST_F(UnknownFieldSetTest, Serialize) {
@@ -205,8 +236,8 @@ TEST_F(UnknownFieldSetTest, SerializeViaReflection) {
     io::StringOutputStream raw_output(&data);
     io::CodedOutputStream output(&raw_output);
     int size = WireFormat::ByteSize(empty_message_);
-    ASSERT_TRUE(
-      WireFormat::SerializeWithCachedSizes(empty_message_, size, &output));
+    WireFormat::SerializeWithCachedSizes(empty_message_, size, &output);
+    ASSERT_FALSE(output.HadError());
   }
 
   // Don't use EXPECT_EQ because we don't want to dump raw binary data to
@@ -249,10 +280,10 @@ TEST_F(UnknownFieldSetTest, SwapWithSelf) {
 TEST_F(UnknownFieldSetTest, MergeFrom) {
   unittest::TestEmptyMessage source, destination;
 
-  destination.mutable_unknown_fields()->AddField(1)->add_varint(1);
-  destination.mutable_unknown_fields()->AddField(3)->add_varint(2);
-  source.mutable_unknown_fields()->AddField(2)->add_varint(3);
-  source.mutable_unknown_fields()->AddField(3)->add_varint(4);
+  destination.mutable_unknown_fields()->AddVarint(1, 1);
+  destination.mutable_unknown_fields()->AddVarint(3, 2);
+  source.mutable_unknown_fields()->AddVarint(2, 3);
+  source.mutable_unknown_fields()->AddVarint(3, 4);
 
   destination.MergeFrom(source);
 
@@ -261,34 +292,31 @@ TEST_F(UnknownFieldSetTest, MergeFrom) {
     //   and merging, above.
     "1: 1\n"
     "3: 2\n"
-    "3: 4\n"
-    "2: 3\n",
+    "2: 3\n"
+    "3: 4\n",
     destination.DebugString());
 }
 
-TEST_F(UnknownFieldSetTest, Clear) {
-  // Get a pointer to a contained field object.
-  const UnknownField* field = GetField("optional_int32");
-  ASSERT_TRUE(field != NULL);
-  ASSERT_EQ(1, field->varint_size());
-  int number = field->number();
 
+TEST_F(UnknownFieldSetTest, Clear) {
   // Clear the set.
   empty_message_.Clear();
   EXPECT_EQ(0, unknown_fields_->field_count());
+}
 
-  // If we add that field again we should get the same object.
-  ASSERT_EQ(field, unknown_fields_->AddField(number));
-
-  // But it should be cleared.
-  EXPECT_EQ(0, field->varint_size());
+TEST_F(UnknownFieldSetTest, ClearAndFreeMemory) {
+  EXPECT_GT(unknown_fields_->field_count(), 0);
+  unknown_fields_->ClearAndFreeMemory();
+  EXPECT_EQ(0, unknown_fields_->field_count());
+  unknown_fields_->AddVarint(123456, 654321);
+  EXPECT_EQ(1, unknown_fields_->field_count());
 }
 
 TEST_F(UnknownFieldSetTest, ParseKnownAndUnknown) {
   // Test mixing known and unknown fields when parsing.
 
   unittest::TestEmptyMessage source;
-  source.mutable_unknown_fields()->AddField(123456)->add_varint(654321);
+  source.mutable_unknown_fields()->AddVarint(123456, 654321);
   string data;
   ASSERT_TRUE(source.SerializeToString(&data));
 
@@ -297,8 +325,9 @@ TEST_F(UnknownFieldSetTest, ParseKnownAndUnknown) {
 
   TestUtil::ExpectAllFieldsSet(destination);
   ASSERT_EQ(1, destination.unknown_fields().field_count());
-  ASSERT_EQ(1, destination.unknown_fields().field(0).varint_size());
-  EXPECT_EQ(654321, destination.unknown_fields().field(0).varint(0));
+  ASSERT_EQ(UnknownField::TYPE_VARINT,
+            destination.unknown_fields().field(0).type());
+  EXPECT_EQ(654321, destination.unknown_fields().field(0).varint());
 }
 
 TEST_F(UnknownFieldSetTest, WrongTypeTreatedAsUnknown) {
@@ -384,16 +413,12 @@ TEST_F(UnknownFieldSetTest, UnknownEnumValue) {
   {
     TestEmptyMessage empty_message;
     UnknownFieldSet* unknown_fields = empty_message.mutable_unknown_fields();
-    UnknownField* singular_unknown_field =
-      unknown_fields->AddField(singular_field->number());
-    singular_unknown_field->add_varint(TestAllTypes::BAR);
-    singular_unknown_field->add_varint(5);  // not valid
-    UnknownField* repeated_unknown_field =
-      unknown_fields->AddField(repeated_field->number());
-    repeated_unknown_field->add_varint(TestAllTypes::FOO);
-    repeated_unknown_field->add_varint(4);  // not valid
-    repeated_unknown_field->add_varint(TestAllTypes::BAZ);
-    repeated_unknown_field->add_varint(6);  // not valid
+    unknown_fields->AddVarint(singular_field->number(), TestAllTypes::BAR);
+    unknown_fields->AddVarint(singular_field->number(), 5);  // not valid
+    unknown_fields->AddVarint(repeated_field->number(), TestAllTypes::FOO);
+    unknown_fields->AddVarint(repeated_field->number(), 4);  // not valid
+    unknown_fields->AddVarint(repeated_field->number(), TestAllTypes::BAZ);
+    unknown_fields->AddVarint(repeated_field->number(), 6);  // not valid
     empty_message.SerializeToString(&data);
   }
 
@@ -406,18 +431,19 @@ TEST_F(UnknownFieldSetTest, UnknownEnumValue) {
     EXPECT_EQ(TestAllTypes::BAZ, message.repeated_nested_enum(1));
 
     const UnknownFieldSet& unknown_fields = message.unknown_fields();
-    ASSERT_EQ(2, unknown_fields.field_count());
+    ASSERT_EQ(3, unknown_fields.field_count());
 
-    const UnknownField& singular_unknown_field = unknown_fields.field(0);
-    ASSERT_EQ(singular_field->number(), singular_unknown_field.number());
-    ASSERT_EQ(1, singular_unknown_field.varint_size());
-    EXPECT_EQ(5, singular_unknown_field.varint(0));
+    EXPECT_EQ(singular_field->number(), unknown_fields.field(0).number());
+    ASSERT_EQ(UnknownField::TYPE_VARINT, unknown_fields.field(0).type());
+    EXPECT_EQ(5, unknown_fields.field(0).varint());
 
-    const UnknownField& repeated_unknown_field = unknown_fields.field(1);
-    ASSERT_EQ(repeated_field->number(), repeated_unknown_field.number());
-    ASSERT_EQ(2, repeated_unknown_field.varint_size());
-    EXPECT_EQ(4, repeated_unknown_field.varint(0));
-    EXPECT_EQ(6, repeated_unknown_field.varint(1));
+    EXPECT_EQ(repeated_field->number(), unknown_fields.field(1).number());
+    ASSERT_EQ(UnknownField::TYPE_VARINT, unknown_fields.field(1).type());
+    EXPECT_EQ(4, unknown_fields.field(1).varint());
+
+    EXPECT_EQ(repeated_field->number(), unknown_fields.field(2).number());
+    ASSERT_EQ(UnknownField::TYPE_VARINT, unknown_fields.field(2).type());
+    EXPECT_EQ(6, unknown_fields.field(2).varint());
   }
 
   {
@@ -435,87 +461,134 @@ TEST_F(UnknownFieldSetTest, UnknownEnumValue) {
               message.GetExtension(repeated_nested_enum_extension, 1));
 
     const UnknownFieldSet& unknown_fields = message.unknown_fields();
-    ASSERT_EQ(2, unknown_fields.field_count());
+    ASSERT_EQ(3, unknown_fields.field_count());
 
-    const UnknownField& singular_unknown_field = unknown_fields.field(0);
-    ASSERT_EQ(singular_field->number(), singular_unknown_field.number());
-    ASSERT_EQ(1, singular_unknown_field.varint_size());
-    EXPECT_EQ(5, singular_unknown_field.varint(0));
+    EXPECT_EQ(singular_field->number(), unknown_fields.field(0).number());
+    ASSERT_EQ(UnknownField::TYPE_VARINT, unknown_fields.field(0).type());
+    EXPECT_EQ(5, unknown_fields.field(0).varint());
 
-    const UnknownField& repeated_unknown_field = unknown_fields.field(1);
-    ASSERT_EQ(repeated_field->number(), repeated_unknown_field.number());
-    ASSERT_EQ(2, repeated_unknown_field.varint_size());
-    EXPECT_EQ(4, repeated_unknown_field.varint(0));
-    EXPECT_EQ(6, repeated_unknown_field.varint(1));
-  }
-}
+    EXPECT_EQ(repeated_field->number(), unknown_fields.field(1).number());
+    ASSERT_EQ(UnknownField::TYPE_VARINT, unknown_fields.field(1).type());
+    EXPECT_EQ(4, unknown_fields.field(1).varint());
 
-TEST_F(UnknownFieldSetTest, SpaceUsedExcludingSelf) {
-  {
-    // Make sure an unknown field set has zero space used until a field is
-    // actually added.
-    unittest::TestEmptyMessage empty_message;
-    const int empty_message_size = empty_message.SpaceUsed();
-    UnknownFieldSet* unknown_fields = empty_message.mutable_unknown_fields();
-    EXPECT_EQ(empty_message_size, empty_message.SpaceUsed());
-    unknown_fields->AddField(1)->add_varint(0);
-    EXPECT_LT(empty_message_size, empty_message.SpaceUsed());
-  }
-  {
-    // Test varints.
-    UnknownFieldSet unknown_fields;
-    UnknownField* field = unknown_fields.AddField(1);
-    const int base_size = unknown_fields.SpaceUsedExcludingSelf();
-    for (int i = 0; i < 16; ++i) {
-      field->add_varint(i);
-    }
-    // Should just defer computation to the RepeatedField.
-    int expected_size = base_size + field->varint().SpaceUsedExcludingSelf();
-    EXPECT_EQ(expected_size, unknown_fields.SpaceUsedExcludingSelf());
-  }
-  {
-    // Test fixed32s.
-    UnknownFieldSet unknown_fields;
-    UnknownField* field = unknown_fields.AddField(1);
-    const int base_size = unknown_fields.SpaceUsedExcludingSelf();
-    for (int i = 0; i < 16; ++i) {
-      field->add_fixed32(i);
-    }
-    int expected_size = base_size + field->fixed32().SpaceUsedExcludingSelf();
-    EXPECT_EQ(expected_size, unknown_fields.SpaceUsedExcludingSelf());
-  }
-  {
-    // Test fixed64s.
-    UnknownFieldSet unknown_fields;
-    UnknownField* field = unknown_fields.AddField(1);
-    const int base_size = unknown_fields.SpaceUsedExcludingSelf();
-    for (int i = 0; i < 16; ++i) {
-      field->add_fixed64(i);
-    }
-    int expected_size = base_size + field->fixed64().SpaceUsedExcludingSelf();
-    EXPECT_EQ(expected_size, unknown_fields.SpaceUsedExcludingSelf());
-  }
-  {
-    // Test length-delimited types.
-    UnknownFieldSet unknown_fields;
-    UnknownField* field = unknown_fields.AddField(1);
-    const int base_size = unknown_fields.SpaceUsedExcludingSelf();
-    for (int i = 0; i < 16; ++i) {
-      field->add_length_delimited()->assign("my length delimited string");
-    }
-    int expected_size = base_size +
-        field->length_delimited().SpaceUsedExcludingSelf();
-    EXPECT_EQ(expected_size, unknown_fields.SpaceUsedExcludingSelf());
+    EXPECT_EQ(repeated_field->number(), unknown_fields.field(2).number());
+    ASSERT_EQ(UnknownField::TYPE_VARINT, unknown_fields.field(2).type());
+    EXPECT_EQ(6, unknown_fields.field(2).varint());
   }
 }
 
 TEST_F(UnknownFieldSetTest, SpaceUsed) {
-  UnknownFieldSet unknown_fields;
-  const int expected_size = sizeof(unknown_fields) +
-      unknown_fields.SpaceUsedExcludingSelf();
-  EXPECT_EQ(expected_size, unknown_fields.SpaceUsed());
+  unittest::TestEmptyMessage empty_message;
+
+  // Make sure an unknown field set has zero space used until a field is
+  // actually added.
+  int base_size = empty_message.SpaceUsed();
+  UnknownFieldSet* unknown_fields = empty_message.mutable_unknown_fields();
+  EXPECT_EQ(base_size, empty_message.SpaceUsed());
+
+  // Make sure each thing we add to the set increases the SpaceUsed().
+  unknown_fields->AddVarint(1, 0);
+  EXPECT_LT(base_size, empty_message.SpaceUsed());
+  base_size = empty_message.SpaceUsed();
+
+  string* str = unknown_fields->AddLengthDelimited(1);
+  EXPECT_LT(base_size, empty_message.SpaceUsed());
+  base_size = empty_message.SpaceUsed();
+
+  str->assign(sizeof(string) + 1, 'x');
+  EXPECT_LT(base_size, empty_message.SpaceUsed());
+  base_size = empty_message.SpaceUsed();
+
+  UnknownFieldSet* group = unknown_fields->AddGroup(1);
+  EXPECT_LT(base_size, empty_message.SpaceUsed());
+  base_size = empty_message.SpaceUsed();
+
+  group->AddVarint(1, 0);
+  EXPECT_LT(base_size, empty_message.SpaceUsed());
 }
 
+
+TEST_F(UnknownFieldSetTest, Empty) {
+  UnknownFieldSet unknown_fields;
+  EXPECT_TRUE(unknown_fields.empty());
+  unknown_fields.AddVarint(6, 123);
+  EXPECT_FALSE(unknown_fields.empty());
+  unknown_fields.Clear();
+  EXPECT_TRUE(unknown_fields.empty());
+}
+
+TEST_F(UnknownFieldSetTest, DeleteSubrange) {
+  // Exhaustively test the deletion of every possible subrange in arrays of all
+  // sizes from 0 through 9.
+  for (int size = 0; size < 10; ++size) {
+    for (int num = 0; num <= size; ++num) {
+      for (int start = 0; start < size - num; ++start) {
+        // Create a set with "size" fields.
+        UnknownFieldSet unknown;
+        for (int i = 0; i < size; ++i) {
+          unknown.AddFixed32(i, i);
+        }
+        // Delete the specified subrange.
+        unknown.DeleteSubrange(start, num);
+        // Make sure the resulting field values are still correct.
+        EXPECT_EQ(size - num, unknown.field_count());
+        for (int i = 0; i < unknown.field_count(); ++i) {
+          if (i < start) {
+            EXPECT_EQ(i, unknown.field(i).fixed32());
+          } else {
+            EXPECT_EQ(i + num, unknown.field(i).fixed32());
+          }
+        }
+      }
+    }
+  }
+}
+
+void CheckDeleteByNumber(const vector<int>& field_numbers, int deleted_number,
+                        const vector<int>& expected_field_nubmers) {
+  UnknownFieldSet unknown_fields;
+  for (int i = 0; i < field_numbers.size(); ++i) {
+    unknown_fields.AddFixed32(field_numbers[i], i);
+  }
+  unknown_fields.DeleteByNumber(deleted_number);
+  ASSERT_EQ(expected_field_nubmers.size(), unknown_fields.field_count());
+  for (int i = 0; i < expected_field_nubmers.size(); ++i) {
+    EXPECT_EQ(expected_field_nubmers[i],
+              unknown_fields.field(i).number());
+  }
+}
+
+#define MAKE_VECTOR(x) vector<int>(x, x + GOOGLE_ARRAYSIZE(x))
+TEST_F(UnknownFieldSetTest, DeleteByNumber) {
+  CheckDeleteByNumber(vector<int>(), 1, vector<int>());
+  static const int kTestFieldNumbers1[] = {1, 2, 3};
+  static const int kFieldNumberToDelete1 = 1;
+  static const int kExpectedFieldNumbers1[] = {2, 3};
+  CheckDeleteByNumber(MAKE_VECTOR(kTestFieldNumbers1), kFieldNumberToDelete1,
+                      MAKE_VECTOR(kExpectedFieldNumbers1));
+  static const int kTestFieldNumbers2[] = {1, 2, 3};
+  static const int kFieldNumberToDelete2 = 2;
+  static const int kExpectedFieldNumbers2[] = {1, 3};
+  CheckDeleteByNumber(MAKE_VECTOR(kTestFieldNumbers2), kFieldNumberToDelete2,
+                      MAKE_VECTOR(kExpectedFieldNumbers2));
+  static const int kTestFieldNumbers3[] = {1, 2, 3};
+  static const int kFieldNumberToDelete3 = 3;
+  static const int kExpectedFieldNumbers3[] = {1, 2};
+  CheckDeleteByNumber(MAKE_VECTOR(kTestFieldNumbers3), kFieldNumberToDelete3,
+                      MAKE_VECTOR(kExpectedFieldNumbers3));
+  static const int kTestFieldNumbers4[] = {1, 2, 1, 4, 1};
+  static const int kFieldNumberToDelete4 = 1;
+  static const int kExpectedFieldNumbers4[] = {2, 4};
+  CheckDeleteByNumber(MAKE_VECTOR(kTestFieldNumbers4), kFieldNumberToDelete4,
+                      MAKE_VECTOR(kExpectedFieldNumbers4));
+  static const int kTestFieldNumbers5[] = {1, 2, 3, 4, 5};
+  static const int kFieldNumberToDelete5 = 6;
+  static const int kExpectedFieldNumbers5[] = {1, 2, 3, 4, 5};
+  CheckDeleteByNumber(MAKE_VECTOR(kTestFieldNumbers5), kFieldNumberToDelete5,
+                      MAKE_VECTOR(kExpectedFieldNumbers5));
+}
+#undef MAKE_VECTOR
 }  // namespace
+
 }  // namespace protobuf
 }  // namespace google

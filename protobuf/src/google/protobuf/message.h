@@ -32,9 +32,10 @@
 //  Based on original Protocol Buffers design by
 //  Sanjay Ghemawat, Jeff Dean, and others.
 //
-// This file contains the abstract interface for all protocol messages.
-// Although it's possible to implement this interface manually, most users
-// will use the protocol compiler to generate implementations.
+// Defines Message, the abstract interface implemented by non-lite
+// protocol message objects.  Although it's possible to implement this
+// interface manually, most users will use the protocol compiler to
+// generate implementations.
 //
 // Example usage:
 //
@@ -78,18 +79,19 @@
 //     // Same as the last block, but do it dynamically via the Message
 //     // reflection interface.
 //     Message* foo = new Foo;
-//     Descriptor* descriptor = foo->GetDescriptor();
+//     const Descriptor* descriptor = foo->GetDescriptor();
 //
 //     // Get the descriptors for the fields we're interested in and verify
 //     // their types.
-//     FieldDescriptor* text_field = descriptor->FindFieldByName("text");
+//     const FieldDescriptor* text_field = descriptor->FindFieldByName("text");
 //     assert(text_field != NULL);
 //     assert(text_field->type() == FieldDescriptor::TYPE_STRING);
-//     assert(text_field->label() == FieldDescriptor::TYPE_OPTIONAL);
-//     FieldDescriptor* numbers_field = descriptor->FindFieldByName("numbers");
+//     assert(text_field->label() == FieldDescriptor::LABEL_OPTIONAL);
+//     const FieldDescriptor* numbers_field = descriptor->
+//                                            FindFieldByName("numbers");
 //     assert(numbers_field != NULL);
 //     assert(numbers_field->type() == FieldDescriptor::TYPE_INT32);
-//     assert(numbers_field->label() == FieldDescriptor::TYPE_REPEATED);
+//     assert(numbers_field->label() == FieldDescriptor::LABEL_REPEATED);
 //
 //     // Parse the message.
 //     foo->ParseFromString(data);
@@ -97,10 +99,10 @@
 //     // Use the reflection interface to examine the contents.
 //     const Reflection* reflection = foo->GetReflection();
 //     assert(reflection->GetString(foo, text_field) == "Hello World!");
-//     assert(reflection->CountField(foo, numbers_field) == 3);
-//     assert(reflection->GetInt32(foo, numbers_field, 0) == 1);
-//     assert(reflection->GetInt32(foo, numbers_field, 1) == 5);
-//     assert(reflection->GetInt32(foo, numbers_field, 2) == 42);
+//     assert(reflection->FieldSize(foo, numbers_field) == 3);
+//     assert(reflection->GetRepeatedInt32(foo, numbers_field, 0) == 1);
+//     assert(reflection->GetRepeatedInt32(foo, numbers_field, 1) == 5);
+//     assert(reflection->GetRepeatedInt32(foo, numbers_field, 2) == 42);
 //
 //     delete foo;
 //   }
@@ -118,36 +120,53 @@
 #include <iosfwd>
 #endif
 
+#include <google/protobuf/message_lite.h>
+
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/descriptor.h>
+
 
 namespace google {
-
 namespace protobuf {
 
 // Defined in this file.
 class Message;
 class Reflection;
+class MessageFactory;
 
 // Defined in other files.
-class Descriptor;            // descriptor.h
-class FieldDescriptor;       // descriptor.h
-class EnumValueDescriptor;   // descriptor.h
+class UnknownFieldSet;         // unknown_field_set.h
 namespace io {
   class ZeroCopyInputStream;   // zero_copy_stream.h
   class ZeroCopyOutputStream;  // zero_copy_stream.h
   class CodedInputStream;      // coded_stream.h
   class CodedOutputStream;     // coded_stream.h
 }
-class UnknownFieldSet;       // unknown_field_set.h
+
+
+template<typename T>
+class RepeatedField;     // repeated_field.h
+
+template<typename T>
+class RepeatedPtrField;  // repeated_field.h
+
+// A container to hold message metadata.
+struct Metadata {
+  const Descriptor* descriptor;
+  const Reflection* reflection;
+};
 
 // Abstract interface for protocol messages.
+//
+// See also MessageLite, which contains most every-day operations.  Message
+// adds descriptors and reflection on top of that.
 //
 // The methods of this class that are virtual but not pure-virtual have
 // default implementations based on reflection.  Message classes which are
 // optimized for speed will want to override these with faster implementations,
 // but classes optimized for code size may be happy with keeping them.  See
 // the optimize_for option in descriptor.proto.
-class LIBPROTOBUF_EXPORT Message {
+class LIBPROTOBUF_EXPORT Message : public MessageLite {
  public:
   inline Message() {}
   virtual ~Message();
@@ -155,7 +174,8 @@ class LIBPROTOBUF_EXPORT Message {
   // Basic Operations ------------------------------------------------
 
   // Construct a new instance of the same type.  Ownership is passed to the
-  // caller.
+  // caller.  (This is also defined in MessageLite, but is defined again here
+  // for return-type covariance.)
   virtual Message* New() const = 0;
 
   // Make this message into a copy of the given message.  The given message
@@ -168,16 +188,6 @@ class LIBPROTOBUF_EXPORT Message {
   // be merged.  Repeated fields will be concatenated.  The given message
   // must be of the same type as this message (i.e. the exact same class).
   virtual void MergeFrom(const Message& from);
-
-  // Clear all fields of the message and set them to their default values.
-  // Clear() avoids freeing memory, assuming that any memory allocated
-  // to hold parts of the message will be needed again to hold the next
-  // message.  If you actually want to free the memory used by a Message,
-  // you must delete it.
-  virtual void Clear();
-
-  // Quickly check if all required fields have values set.
-  virtual bool IsInitialized() const;
 
   // Verifies that IsInitialized() returns true.  GOOGLE_CHECK-fails otherwise, with
   // a nice error message.
@@ -205,43 +215,26 @@ class LIBPROTOBUF_EXPORT Message {
   // See Reflection::GetUnknownFields() for more on unknown fields.
   virtual void DiscardUnknownFields();
 
-  // Debugging -------------------------------------------------------
+  // Computes (an estimate of) the total number of bytes currently used for
+  // storing the message in memory.  The default implementation calls the
+  // Reflection object's SpaceUsed() method.
+  virtual int SpaceUsed() const;
+
+  // Debugging & Testing----------------------------------------------
 
   // Generates a human readable form of this message, useful for debugging
   // and other purposes.
   string DebugString() const;
   // Like DebugString(), but with less whitespace.
   string ShortDebugString() const;
+  // Like DebugString(), but do not escape UTF-8 byte sequences.
+  string Utf8DebugString() const;
   // Convenience function useful in GDB.  Prints DebugString() to stdout.
   void PrintDebugString() const;
 
-  // Parsing ---------------------------------------------------------
-  // Methods for parsing in protocol buffer format.  Most of these are
-  // just simple wrappers around MergeFromCodedStream().
-
-  // Fill the message with a protocol buffer parsed from the given input
-  // stream.  Returns false on a read error or if the input is in the
-  // wrong format.
-  bool ParseFromCodedStream(io::CodedInputStream* input);
-  // Like ParseFromCodedStream(), but accepts messages that are missing
-  // required fields.
-  bool ParsePartialFromCodedStream(io::CodedInputStream* input);
-  // Read a protocol buffer from the given zero-copy input stream.  If
-  // successful, the entire input will be consumed.
-  bool ParseFromZeroCopyStream(io::ZeroCopyInputStream* input);
-  // Like ParseFromZeroCopyStream(), but accepts messages that are missing
-  // required fields.
-  bool ParsePartialFromZeroCopyStream(io::ZeroCopyInputStream* input);
-  // Parse a protocol buffer contained in a string.
-  bool ParseFromString(const string& data);
-  // Like ParseFromString(), but accepts messages that are missing
-  // required fields.
-  bool ParsePartialFromString(const string& data);
-  // Parse a protocol buffer contained in an array of bytes.
-  bool ParseFromArray(const void* data, int size);
-  // Like ParseFromArray(), but accepts messages that are missing
-  // required fields.
-  bool ParsePartialFromArray(const void* data, int size);
+  // Heavy I/O -------------------------------------------------------
+  // Additional parsing and serialization methods not implemented by
+  // MessageLite because they are not supported by the lite library.
 
   // Parse a protocol buffer from a file descriptor.  If successful, the entire
   // input will be consumed.
@@ -256,53 +249,6 @@ class LIBPROTOBUF_EXPORT Message {
   // required fields.
   bool ParsePartialFromIstream(istream* input);
 
-
-  // Reads a protocol buffer from the stream and merges it into this
-  // Message.  Singular fields read from the input overwrite what is
-  // already in the Message and repeated fields are appended to those
-  // already present.
-  //
-  // It is the responsibility of the caller to call input->LastTagWas()
-  // (for groups) or input->ConsumedEntireMessage() (for non-groups) after
-  // this returns to verify that the message's end was delimited correctly.
-  //
-  // ParsefromCodedStream() is implemented as Clear() followed by
-  // MergeFromCodedStream().
-  bool MergeFromCodedStream(io::CodedInputStream* input);
-
-  // Like MergeFromCodedStream(), but succeeds even if required fields are
-  // missing in the input.
-  //
-  // MergeFromCodedStream() is just implemented as MergePartialFromCodedStream()
-  // followed by IsInitialized().
-  virtual bool MergePartialFromCodedStream(io::CodedInputStream* input);
-
-  // Serialization ---------------------------------------------------
-  // Methods for serializing in protocol buffer format.  Most of these
-  // are just simple wrappers around ByteSize() and SerializeWithCachedSizes().
-
-  // Write a protocol buffer of this message to the given output.  Returns
-  // false on a write error.  If the message is missing required fields,
-  // this may GOOGLE_CHECK-fail.
-  bool SerializeToCodedStream(io::CodedOutputStream* output) const;
-  // Like SerializeToCodedStream(), but allows missing required fields.
-  bool SerializePartialToCodedStream(io::CodedOutputStream* output) const;
-  // Write the message to the given zero-copy output stream.  All required
-  // fields must be set.
-  bool SerializeToZeroCopyStream(io::ZeroCopyOutputStream* output) const;
-  // Like SerializeToZeroCopyStream(), but allows missing required fields.
-  bool SerializePartialToZeroCopyStream(io::ZeroCopyOutputStream* output) const;
-  // Serialize the message and store it in the given string.  All required
-  // fields must be set.
-  bool SerializeToString(string* output) const;
-  // Like SerializeToString(), but allows missing required fields.
-  bool SerializePartialToString(string* output) const;
-  // Serialize the message and store it in the given byte array.  All required
-  // fields must be set.
-  bool SerializeToArray(void* data, int size) const;
-  // Like SerializeToArray(), but allows missing required fields.
-  bool SerializePartialToArray(void* data, int size) const;
-
   // Serialize the message and write it to the given file descriptor.  All
   // required fields must be set.
   bool SerializeToFileDescriptor(int file_descriptor) const;
@@ -315,49 +261,17 @@ class LIBPROTOBUF_EXPORT Message {
   bool SerializePartialToOstream(ostream* output) const;
 
 
-  // Make a string encoding the message. Is equivalent to calling
-  // SerializeToString() on a string and using that.  Returns the empty
-  // string if SerializeToString() would have returned an error.
-  // Note: If you intend to generate many such strings, you may
-  // reduce heap fragmentation by instead re-using the same string
-  // object with calls to SerializeToString().
-  string SerializeAsString() const;
-  // Like SerializeAsString(), but allows missing required fields.
-  string SerializePartialAsString() const;
+  // Reflection-based methods ----------------------------------------
+  // These methods are pure-virtual in MessageLite, but Message provides
+  // reflection-based default implementations.
 
-  // Like SerializeToString(), but appends to the data to the string's existing
-  // contents.  All required fields must be set.
-  bool AppendToString(string* output) const;
-  // Like AppendToString(), but allows missing required fields.
-  bool AppendPartialToString(string* output) const;
-
-  // Computes the serialized size of the message.  This recursively calls
-  // ByteSize() on all embedded messages.  If a subclass does not override
-  // this, it MUST override SetCachedSize().
+  virtual string GetTypeName() const;
+  virtual void Clear();
+  virtual bool IsInitialized() const;
+  virtual void CheckTypeAndMergeFrom(const MessageLite& other);
+  virtual bool MergePartialFromCodedStream(io::CodedInputStream* input);
   virtual int ByteSize() const;
-
-  // Computes (an estimate of) the total number of bytes currently used for
-  // storing the message in memory.  The default implementation calls the
-  // Reflection object's SpaceUsed() method.
-  virtual int SpaceUsed() const;
-
-  // Serializes the message without recomputing the size.  The message must
-  // not have changed since the last call to ByteSize(); if it has, the results
-  // are undefined.
-  virtual bool SerializeWithCachedSizes(io::CodedOutputStream* output) const;
-
-  // Returns the result of the last call to ByteSize().  An embedded message's
-  // size is needed both to serialize it (because embedded messages are
-  // length-delimited) and to compute the outer message's size.  Caching
-  // the size avoids computing it multiple times.
-  //
-  // ByteSize() does not automatically use the cached size when available
-  // because this would require invalidating it every time the message was
-  // modified, which would be too hard and expensive.  (E.g. if a deeply-nested
-  // sub-message is changed, all of its parents' cached sizes would need to be
-  // invalidated, which is too much work for an otherwise inlined setter
-  // method.)
-  virtual int GetCachedSize() const = 0;
+  virtual void SerializeWithCachedSizes(io::CodedOutputStream* output) const;
 
  private:
   // This is called only by the default implementation of ByteSize(), to
@@ -378,13 +292,25 @@ class LIBPROTOBUF_EXPORT Message {
 
   // Get a Descriptor for this message's type.  This describes what
   // fields the message contains, the types of those fields, etc.
-  virtual const Descriptor* GetDescriptor() const = 0;
+  const Descriptor* GetDescriptor() const { return GetMetadata().descriptor; }
 
   // Get the Reflection interface for this Message, which can be used to
   // read and modify the fields of the Message dynamically (in other words,
   // without knowing the message type at compile time).  This object remains
   // property of the Message.
-  virtual const Reflection* GetReflection() const = 0;
+  //
+  // This method remains virtual in case a subclass does not implement
+  // reflection and wants to override the default behavior.
+  virtual const Reflection* GetReflection() const {
+    return GetMetadata().reflection;
+  }
+
+ protected:
+  // Get a struct containing the metadata for the Message. Most subclasses only
+  // need to implement this method, rather than the GetDescriptor() and
+  // GetReflection() wrappers.
+  virtual Metadata GetMetadata() const  = 0;
+
 
  private:
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(Message);
@@ -433,7 +359,6 @@ class LIBPROTOBUF_EXPORT Message {
 //   write fields from a Reflection without paying attention to the type.
 class LIBPROTOBUF_EXPORT Reflection {
  public:
-  // TODO(kenton):  Remove parameter.
   inline Reflection() {}
   virtual ~Reflection();
 
@@ -462,6 +387,29 @@ class LIBPROTOBUF_EXPORT Reflection {
   // FieldSize() returns zero.
   virtual void ClearField(Message* message,
                           const FieldDescriptor* field) const = 0;
+
+  // Removes the last element of a repeated field.
+  // We don't provide a way to remove any element other than the last
+  // because it invites inefficient use, such as O(n^2) filtering loops
+  // that should have been O(n).  If you want to remove an element other
+  // than the last, the best way to do it is to re-arrange the elements
+  // (using Swap()) so that the one you want removed is at the end, then
+  // call RemoveLast().
+  virtual void RemoveLast(Message* message,
+                          const FieldDescriptor* field) const = 0;
+  // Removes the last element of a repeated message field, and returns the
+  // pointer to the caller.  Caller takes ownership of the returned pointer.
+  virtual Message* ReleaseLast(Message* message,
+                               const FieldDescriptor* field) const = 0;
+
+  // Swap the complete contents of two messages.
+  virtual void Swap(Message* message1, Message* message2) const = 0;
+
+  // Swap two elements of a repeated field.
+  virtual void SwapElements(Message* message,
+                    const FieldDescriptor* field,
+                    int index1,
+                    int index2) const = 0;
 
   // List all fields of the message which are currently set.  This includes
   // extensions.  Singular fields will only be listed if HasField(field) would
@@ -493,8 +441,10 @@ class LIBPROTOBUF_EXPORT Reflection {
                            const FieldDescriptor* field) const = 0;
   virtual const EnumValueDescriptor* GetEnum(
       const Message& message, const FieldDescriptor* field) const = 0;
+  // See MutableMessage() for the meaning of the "factory" parameter.
   virtual const Message& GetMessage(const Message& message,
-                                    const FieldDescriptor* field) const = 0;
+                                    const FieldDescriptor* field,
+                                    MessageFactory* factory = NULL) const = 0;
 
   // Get a string value without copying, if possible.
   //
@@ -539,9 +489,29 @@ class LIBPROTOBUF_EXPORT Reflection {
   virtual void SetEnum  (Message* message,
                          const FieldDescriptor* field,
                          const EnumValueDescriptor* value) const = 0;
-  // Get a mutable pointer to a field with a message type.
+  // Get a mutable pointer to a field with a message type.  If a MessageFactory
+  // is provided, it will be used to construct instances of the sub-message;
+  // otherwise, the default factory is used.  If the field is an extension that
+  // does not live in the same pool as the containing message's descriptor (e.g.
+  // it lives in an overlay pool), then a MessageFactory must be provided.
+  // If you have no idea what that meant, then you probably don't need to worry
+  // about it (don't provide a MessageFactory).  WARNING:  If the
+  // FieldDescriptor is for a compiled-in extension, then
+  // factory->GetPrototype(field->message_type() MUST return an instance of the
+  // compiled-in class for this type, NOT DynamicMessage.
   virtual Message* MutableMessage(Message* message,
-                                  const FieldDescriptor* field) const = 0;
+                                  const FieldDescriptor* field,
+                                  MessageFactory* factory = NULL) const = 0;
+  // Releases the message specified by 'field' and returns the pointer,
+  // ReleaseMessage() will return the message the message object if it exists.
+  // Otherwise, it may or may not return NULL.  In any case, if the return value
+  // is non-NULL, the caller takes ownership of the pointer.
+  // If the field existed (HasField() is true), then the returned pointer will
+  // be the same as the pointer returned by MutableMessage().
+  // This function has the same effect as ClearField().
+  virtual Message* ReleaseMessage(Message* message,
+                                  const FieldDescriptor* field,
+                                  MessageFactory* factory = NULL) const = 0;
 
 
   // Repeated field getters ------------------------------------------
@@ -643,11 +613,45 @@ class LIBPROTOBUF_EXPORT Reflection {
   virtual void AddEnum  (Message* message,
                          const FieldDescriptor* field,
                          const EnumValueDescriptor* value) const = 0;
+  // See MutableMessage() for comments on the "factory" parameter.
   virtual Message* AddMessage(Message* message,
-                              const FieldDescriptor* field) const = 0;
+                              const FieldDescriptor* field,
+                              MessageFactory* factory = NULL) const = 0;
 
 
-  // Extensions ------------------------------------------------------
+  // Repeated field accessors  -------------------------------------------------
+  // The methods above, e.g. GetRepeatedInt32(msg, fd, index), provide singular
+  // access to the data in a RepeatedField.  The methods below provide aggregate
+  // access by exposing the RepeatedField object itself with the Message.
+  // Applying these templates to inappropriate types will lead to an undefined
+  // reference at link time (e.g. GetRepeatedField<***double>), or possibly a
+  // template matching error at compile time (e.g. GetRepeatedPtrField<File>).
+  //
+  // Usage example: my_doubs = refl->GetRepeatedField<double>(msg, fd);
+
+  // for T = Cord and all protobuf scalar types except enums.
+  template<typename T>
+  const RepeatedField<T>& GetRepeatedField(
+      const Message&, const FieldDescriptor*) const;
+
+  // for T = Cord and all protobuf scalar types except enums.
+  template<typename T>
+  RepeatedField<T>* MutableRepeatedField(
+      Message*, const FieldDescriptor*) const;
+
+  // for T = string, google::protobuf::internal::StringPieceField
+  //         google::protobuf::Message & descendants.
+  template<typename T>
+  const RepeatedPtrField<T>& GetRepeatedPtrField(
+      const Message&, const FieldDescriptor*) const;
+
+  // for T = string, google::protobuf::internal::StringPieceField
+  //         google::protobuf::Message & descendants.
+  template<typename T>
+  RepeatedPtrField<T>* MutableRepeatedPtrField(
+      Message*, const FieldDescriptor*) const;
+
+  // Extensions ----------------------------------------------------------------
 
   // Try to find an extension of this message type by fully-qualified field
   // name.  Returns NULL if no extension is known for this name or number.
@@ -659,7 +663,26 @@ class LIBPROTOBUF_EXPORT Reflection {
   virtual const FieldDescriptor* FindKnownExtensionByNumber(
       int number) const = 0;
 
+  // ---------------------------------------------------------------------------
+
+ protected:
+  // Obtain a pointer to a Repeated Field Structure and do some type checking:
+  //   on field->cpp_type(),
+  //   on field->field_option().ctype() (if ctype >= 0)
+  //   of field->message_type() (if message_type != NULL).
+  // We use 1 routine rather than 4 (const vs mutable) x (scalar vs pointer).
+  virtual void* MutableRawRepeatedField(
+      Message* message, const FieldDescriptor* field, FieldDescriptor::CppType,
+      int ctype, const Descriptor* message_type) const = 0;
+
  private:
+  // Special version for specialized implementations of string.  We can't call
+  // MutableRawRepeatedField directly here because we don't have access to
+  // FieldOptions::* which are defined in descriptor.pb.h.  Including that
+  // file here is not possible because it would cause a circular include cycle.
+  void* MutableRawRepeatedString(
+      Message* message, const FieldDescriptor* field, bool is_string) const;
+
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(Reflection);
 };
 
@@ -705,14 +728,108 @@ class LIBPROTOBUF_EXPORT MessageFactory {
   // This factory is a singleton.  The caller must not delete the object.
   static MessageFactory* generated_factory();
 
-  // For internal use only:  Registers a message type at static initialization
-  // time, to be placed in generated_factory().
+  // For internal use only:  Registers a .proto file at static initialization
+  // time, to be placed in generated_factory.  The first time GetPrototype()
+  // is called with a descriptor from this file, |register_messages| will be
+  // called, with the file name as the parameter.  It must call
+  // InternalRegisterGeneratedMessage() (below) to register each message type
+  // in the file.  This strange mechanism is necessary because descriptors are
+  // built lazily, so we can't register types by their descriptor until we
+  // know that the descriptor exists.  |filename| must be a permanent string.
+  static void InternalRegisterGeneratedFile(
+      const char* filename, void (*register_messages)(const string&));
+
+  // For internal use only:  Registers a message type.  Called only by the
+  // functions which are registered with InternalRegisterGeneratedFile(),
+  // above.
   static void InternalRegisterGeneratedMessage(const Descriptor* descriptor,
                                                const Message* prototype);
+
 
  private:
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(MessageFactory);
 };
+
+#define DECLARE_GET_REPEATED_FIELD(TYPE)                         \
+template<>                                                       \
+LIBPROTOBUF_EXPORT                                               \
+const RepeatedField<TYPE>& Reflection::GetRepeatedField<TYPE>(   \
+    const Message& message, const FieldDescriptor* field) const; \
+                                                                 \
+template<>                                                       \
+LIBPROTOBUF_EXPORT                                               \
+RepeatedField<TYPE>* Reflection::MutableRepeatedField<TYPE>(     \
+    Message* message, const FieldDescriptor* field) const;
+
+DECLARE_GET_REPEATED_FIELD(int32)
+DECLARE_GET_REPEATED_FIELD(int64)
+DECLARE_GET_REPEATED_FIELD(uint32)
+DECLARE_GET_REPEATED_FIELD(uint64)
+DECLARE_GET_REPEATED_FIELD(float)
+DECLARE_GET_REPEATED_FIELD(double)
+DECLARE_GET_REPEATED_FIELD(bool)
+
+#undef DECLARE_GET_REPEATED_FIELD
+
+// =============================================================================
+// Implementation details for {Get,Mutable}RawRepeatedPtrField.  We provide
+// specializations for <string>, <StringPieceField> and <Message> and handle
+// everything else with the default template which will match any type having
+// a method with signature "static const google::protobuf::Descriptor* descriptor()".
+// Such a type presumably is a descendant of google::protobuf::Message.
+
+template<>
+inline const RepeatedPtrField<string>& Reflection::GetRepeatedPtrField<string>(
+    const Message& message, const FieldDescriptor* field) const {
+  return *static_cast<RepeatedPtrField<string>* >(
+      MutableRawRepeatedString(const_cast<Message*>(&message), field, true));
+}
+
+template<>
+inline RepeatedPtrField<string>* Reflection::MutableRepeatedPtrField<string>(
+    Message* message, const FieldDescriptor* field) const {
+  return static_cast<RepeatedPtrField<string>* >(
+      MutableRawRepeatedString(message, field, true));
+}
+
+
+// -----
+
+template<>
+inline const RepeatedPtrField<Message>& Reflection::GetRepeatedPtrField(
+    const Message& message, const FieldDescriptor* field) const {
+  return *static_cast<RepeatedPtrField<Message>* >(
+      MutableRawRepeatedField(const_cast<Message*>(&message), field,
+          FieldDescriptor::CPPTYPE_MESSAGE, -1,
+          NULL));
+}
+
+template<>
+inline RepeatedPtrField<Message>* Reflection::MutableRepeatedPtrField(
+    Message* message, const FieldDescriptor* field) const {
+  return static_cast<RepeatedPtrField<Message>* >(
+      MutableRawRepeatedField(message, field,
+          FieldDescriptor::CPPTYPE_MESSAGE, -1,
+          NULL));
+}
+
+template<typename PB>
+inline const RepeatedPtrField<PB>& Reflection::GetRepeatedPtrField(
+    const Message& message, const FieldDescriptor* field) const {
+  return *static_cast<RepeatedPtrField<PB>* >(
+      MutableRawRepeatedField(const_cast<Message*>(&message), field,
+          FieldDescriptor::CPPTYPE_MESSAGE, -1,
+          PB::default_instance().GetDescriptor()));
+}
+
+template<typename PB>
+inline RepeatedPtrField<PB>* Reflection::MutableRepeatedPtrField(
+    Message* message, const FieldDescriptor* field) const {
+  return static_cast<RepeatedPtrField<PB>* >(
+      MutableRawRepeatedField(message, field,
+          FieldDescriptor::CPPTYPE_MESSAGE, -1,
+          PB::default_instance().GetDescriptor()));
+}
 
 }  // namespace protobuf
 

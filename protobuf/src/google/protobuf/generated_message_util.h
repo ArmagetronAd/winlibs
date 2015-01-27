@@ -31,57 +31,47 @@
 // Author: kenton@google.com (Kenton Varda)
 //  Based on original Protocol Buffers design by
 //  Sanjay Ghemawat, Jeff Dean, and others.
+//
+// This file contains miscellaneous helper code used by generated code --
+// including lite types -- but which should not be used directly by users.
 
-#include <algorithm>
+#ifndef GOOGLE_PROTOBUF_GENERATED_MESSAGE_UTIL_H__
+#define GOOGLE_PROTOBUF_GENERATED_MESSAGE_UTIL_H__
 
-#include <google/protobuf/repeated_field.h>
+#include <string>
+
 #include <google/protobuf/stubs/common.h>
-
 namespace google {
 namespace protobuf {
-
 namespace internal {
 
-void RepeatedPtrFieldBase::Reserve(int new_size) {
-  if (total_size_ >= new_size) return;
+// Annotation for the compiler to emit a deprecation message if a field marked
+// with option 'deprecated=true' is used in the code, or for other things in
+// generated code which are deprecated.
+//
+// For internal use in the pb.cc files, deprecation warnings are suppressed
+// there.
+#undef DEPRECATED_PROTOBUF_FIELD
+#define PROTOBUF_DEPRECATED
 
-  void** old_elements = elements_;
-  total_size_ = max(kMinRepeatedFieldAllocationSize,
-                    max(total_size_ * 2, new_size));
-  elements_ = new void*[total_size_];
-  if (old_elements != NULL) {
-    memcpy(elements_, old_elements, allocated_size_ * sizeof(elements_[0]));
-    delete [] old_elements;
-  }
-}
 
-void RepeatedPtrFieldBase::Swap(RepeatedPtrFieldBase* other) {
-  if (this == other) return;
-  void** swap_elements       = elements_;
-  int    swap_current_size   = current_size_;
-  int    swap_allocated_size = allocated_size_;
-  int    swap_total_size     = total_size_;
+// Constants for special floating point values.
+LIBPROTOBUF_EXPORT double Infinity();
+LIBPROTOBUF_EXPORT double NaN();
 
-  elements_       = other->elements_;
-  current_size_   = other->current_size_;
-  allocated_size_ = other->allocated_size_;
-  total_size_     = other->total_size_;
+// Constant used for empty default strings.
+LIBPROTOBUF_EXPORT extern const ::std::string kEmptyString;
 
-  other->elements_       = swap_elements;
-  other->current_size_   = swap_current_size;
-  other->allocated_size_ = swap_allocated_size;
-  other->total_size_     = swap_total_size;
-}
-
-string* StringTypeHandlerBase::New() {
-  return new string;
-}
-void StringTypeHandlerBase::Delete(string* value) {
-  delete value;
-}
+// Defined in generated_message_reflection.cc -- not actually part of the lite
+// library.
+//
+// TODO(jasonh): The various callers get this declaration from a variety of
+// places: probably in most cases repeated_field.h. Clean these up so they all
+// get the declaration from this file.
+LIBPROTOBUF_EXPORT int StringSpaceUsedExcludingSelf(const string& str);
 
 }  // namespace internal
-
-
 }  // namespace protobuf
+
 }  // namespace google
+#endif  // GOOGLE_PROTOBUF_GENERATED_MESSAGE_UTIL_H__

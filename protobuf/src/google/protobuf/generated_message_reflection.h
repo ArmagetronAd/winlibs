@@ -40,17 +40,23 @@
 
 #include <string>
 #include <vector>
+#include <google/protobuf/stubs/common.h>
+// TODO(jasonh): Remove this once the compiler change to directly include this
+// is released to components.
+#include <google/protobuf/generated_enum_reflection.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/unknown_field_set.h>
 
 
 namespace google {
+namespace upb {
+namespace google_opensource {
+class GMR_Handlers;
+}  // namespace google_opensource
+}  // namespace upb
+
 namespace protobuf {
   class DescriptorPool;
-  // Generated code needs these to have been forward-declared.  Easier to do it
-  // here than to print them inside every .pb.h file.
-  class FileDescriptor;
-  class EnumDescriptor;
 }
 
 namespace protobuf {
@@ -116,6 +122,7 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
   //   pool:          DescriptorPool to search for extension definitions.  Only
   //                  used by FindKnownExtensionByName() and
   //                  FindKnownExtensionByNumber().
+  //   factory:       MessageFactory to use to construct extension messages.
   //   object_size:   The size of a message object of this type, as measured
   //                  by sizeof().
   GeneratedMessageReflection(const Descriptor* descriptor,
@@ -125,6 +132,7 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
                              int unknown_fields_offset,
                              int extensions_offset,
                              const DescriptorPool* pool,
+                             MessageFactory* factory,
                              int object_size);
   ~GeneratedMessageReflection();
 
@@ -138,6 +146,11 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
   bool HasField(const Message& message, const FieldDescriptor* field) const;
   int FieldSize(const Message& message, const FieldDescriptor* field) const;
   void ClearField(Message* message, const FieldDescriptor* field) const;
+  void RemoveLast(Message* message, const FieldDescriptor* field) const;
+  Message* ReleaseLast(Message* message, const FieldDescriptor* field) const;
+  void Swap(Message* message1, Message* message2) const;
+  void SwapElements(Message* message, const FieldDescriptor* field,
+            int index1, int index2) const;
   void ListFields(const Message& message,
                   vector<const FieldDescriptor*>* output) const;
 
@@ -163,7 +176,8 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
   const EnumValueDescriptor* GetEnum(const Message& message,
                                      const FieldDescriptor* field) const;
   const Message& GetMessage(const Message& message,
-                            const FieldDescriptor* field) const;
+                            const FieldDescriptor* field,
+                            MessageFactory* factory = NULL) const;
 
   void SetInt32 (Message* message,
                  const FieldDescriptor* field, int32  value) const;
@@ -184,7 +198,10 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
                  const string& value) const;
   void SetEnum  (Message* message, const FieldDescriptor* field,
                  const EnumValueDescriptor* value) const;
-  Message* MutableMessage(Message* message, const FieldDescriptor* field) const;
+  Message* MutableMessage(Message* message, const FieldDescriptor* field,
+                          MessageFactory* factory = NULL) const;
+  Message* ReleaseMessage(Message* message, const FieldDescriptor* field,
+                          MessageFactory* factory = NULL) const;
 
   int32  GetRepeatedInt32 (const Message& message,
                            const FieldDescriptor* field, int index) const;
@@ -256,13 +273,23 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
   void AddEnum(Message* message,
                const FieldDescriptor* field,
                const EnumValueDescriptor* value) const;
-  Message* AddMessage(Message* message, const FieldDescriptor* field) const;
+  Message* AddMessage(Message* message, const FieldDescriptor* field,
+                      MessageFactory* factory = NULL) const;
 
   const FieldDescriptor* FindKnownExtensionByName(const string& name) const;
   const FieldDescriptor* FindKnownExtensionByNumber(int number) const;
 
+ protected:
+  virtual void* MutableRawRepeatedField(
+      Message* message, const FieldDescriptor* field, FieldDescriptor::CppType,
+      int ctype, const Descriptor* desc) const;
+
  private:
   friend class GeneratedMessage;
+
+  // To parse directly into a proto2 generated class, the class GMR_Handlers
+  // needs access to member offsets and hasbits.
+  friend class LIBPROTOBUF_EXPORT upb::google_opensource::GMR_Handlers;
 
   const Descriptor* descriptor_;
   const Message* default_instance_;
@@ -274,6 +301,7 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
   int object_size_;
 
   const DescriptorPool* descriptor_pool_;
+  MessageFactory* message_factory_;
 
   template <typename Type>
   inline const Type& GetRaw(const Message& message,
@@ -283,7 +311,6 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
                           const FieldDescriptor* field) const;
   template <typename Type>
   inline const Type& DefaultRaw(const FieldDescriptor* field) const;
-  inline const Message* GetMessagePrototype(const FieldDescriptor* field) const;
 
   inline const uint32* GetHasBits(const Message& message) const;
   inline uint32* MutableHasBits(Message* message) const;
@@ -311,9 +338,13 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
                                       const FieldDescriptor* field,
                                       int index) const;
   template <typename Type>
+  inline const Type& GetRepeatedPtrField(const Message& message,
+                                         const FieldDescriptor* field,
+                                         int index) const;
+  template <typename Type>
   inline void SetRepeatedField(Message* message,
                                const FieldDescriptor* field, int index,
-                               const Type& value) const;
+                               Type value) const;
   template <typename Type>
   inline Type* MutableRepeatedField(Message* message,
                                     const FieldDescriptor* field,
@@ -344,9 +375,10 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Reflection {
 // choose 16 rather than some other number just in case the compiler would
 // be confused by an unaligned pointer.
 #define GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(TYPE, FIELD)    \
-  (reinterpret_cast<const char*>(                             \
-     &reinterpret_cast<const TYPE*>(16)->FIELD) -             \
-   reinterpret_cast<const char*>(16))
+  static_cast<int>(                                           \
+    reinterpret_cast<const char*>(                            \
+      &reinterpret_cast<const TYPE*>(16)->FIELD) -            \
+    reinterpret_cast<const char*>(16))
 
 // There are some places in proto2 where dynamic_cast would be useful as an
 // optimization.  For example, take Message::MergeFrom(const Message& other).
@@ -379,12 +411,6 @@ inline To dynamic_cast_if_available(From from) {
   return dynamic_cast<To>(from);
 #endif
 }
-
-// Compute the space used by a string, not including sizeof(string) itself.
-// This is slightly complicated because small strings store their data within
-// the string object but large strings do not.
-int StringSpaceUsedExcludingSelf(const string& str);
-
 
 }  // namespace internal
 }  // namespace protobuf

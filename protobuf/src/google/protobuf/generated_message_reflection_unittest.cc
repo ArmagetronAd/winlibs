@@ -146,6 +146,170 @@ TEST(GeneratedMessageReflectionTest, DefaultsAfterClear) {
             &reflection->GetMessage(message, F("optional_import_message")));
 }
 
+
+TEST(GeneratedMessageReflectionTest, Swap) {
+  unittest::TestAllTypes message1;
+  unittest::TestAllTypes message2;
+
+  TestUtil::SetAllFields(&message1);
+
+  const Reflection* reflection = message1.GetReflection();
+  reflection->Swap(&message1, &message2);
+
+  TestUtil::ExpectClear(message1);
+  TestUtil::ExpectAllFieldsSet(message2);
+}
+
+TEST(GeneratedMessageReflectionTest, SwapWithBothSet) {
+  unittest::TestAllTypes message1;
+  unittest::TestAllTypes message2;
+
+  TestUtil::SetAllFields(&message1);
+  TestUtil::SetAllFields(&message2);
+  TestUtil::ModifyRepeatedFields(&message2);
+
+  const Reflection* reflection = message1.GetReflection();
+  reflection->Swap(&message1, &message2);
+
+  TestUtil::ExpectRepeatedFieldsModified(message1);
+  TestUtil::ExpectAllFieldsSet(message2);
+
+  message1.set_optional_int32(532819);
+
+  reflection->Swap(&message1, &message2);
+
+  EXPECT_EQ(532819, message2.optional_int32());
+}
+
+TEST(GeneratedMessageReflectionTest, SwapExtensions) {
+  unittest::TestAllExtensions message1;
+  unittest::TestAllExtensions message2;
+
+  TestUtil::SetAllExtensions(&message1);
+
+  const Reflection* reflection = message1.GetReflection();
+  reflection->Swap(&message1, &message2);
+
+  TestUtil::ExpectExtensionsClear(message1);
+  TestUtil::ExpectAllExtensionsSet(message2);
+}
+
+TEST(GeneratedMessageReflectionTest, SwapUnknown) {
+  unittest::TestEmptyMessage message1, message2;
+
+  message1.mutable_unknown_fields()->AddVarint(1234, 1);
+
+  EXPECT_EQ(1, message1.unknown_fields().field_count());
+  EXPECT_EQ(0, message2.unknown_fields().field_count());
+  const Reflection* reflection = message1.GetReflection();
+  reflection->Swap(&message1, &message2);
+  EXPECT_EQ(0, message1.unknown_fields().field_count());
+  EXPECT_EQ(1, message2.unknown_fields().field_count());
+}
+
+TEST(GeneratedMessageReflectionTest, RemoveLast) {
+  unittest::TestAllTypes message;
+  TestUtil::ReflectionTester reflection_tester(
+    unittest::TestAllTypes::descriptor());
+
+  TestUtil::SetAllFields(&message);
+
+  reflection_tester.RemoveLastRepeatedsViaReflection(&message);
+
+  TestUtil::ExpectLastRepeatedsRemoved(message);
+}
+
+TEST(GeneratedMessageReflectionTest, RemoveLastExtensions) {
+  unittest::TestAllExtensions message;
+  TestUtil::ReflectionTester reflection_tester(
+    unittest::TestAllExtensions::descriptor());
+
+  TestUtil::SetAllExtensions(&message);
+
+  reflection_tester.RemoveLastRepeatedsViaReflection(&message);
+
+  TestUtil::ExpectLastRepeatedExtensionsRemoved(message);
+}
+
+TEST(GeneratedMessageReflectionTest, ReleaseLast) {
+  unittest::TestAllTypes message;
+  const Descriptor* descriptor = message.GetDescriptor();
+  TestUtil::ReflectionTester reflection_tester(descriptor);
+
+  TestUtil::SetAllFields(&message);
+
+  reflection_tester.ReleaseLastRepeatedsViaReflection(&message, false);
+
+  TestUtil::ExpectLastRepeatedsReleased(message);
+
+  // Now test that we actually release the right message.
+  message.Clear();
+  TestUtil::SetAllFields(&message);
+  ASSERT_EQ(2, message.repeated_foreign_message_size());
+  const protobuf_unittest::ForeignMessage* expected =
+      message.mutable_repeated_foreign_message(1);
+  scoped_ptr<Message> released(message.GetReflection()->ReleaseLast(
+      &message, descriptor->FindFieldByName("repeated_foreign_message")));
+  EXPECT_EQ(expected, released.get());
+}
+
+TEST(GeneratedMessageReflectionTest, ReleaseLastExtensions) {
+  unittest::TestAllExtensions message;
+  const Descriptor* descriptor = message.GetDescriptor();
+  TestUtil::ReflectionTester reflection_tester(descriptor);
+
+  TestUtil::SetAllExtensions(&message);
+
+  reflection_tester.ReleaseLastRepeatedsViaReflection(&message, true);
+
+  TestUtil::ExpectLastRepeatedExtensionsReleased(message);
+
+  // Now test that we actually release the right message.
+  message.Clear();
+  TestUtil::SetAllExtensions(&message);
+  ASSERT_EQ(2, message.ExtensionSize(
+      unittest::repeated_foreign_message_extension));
+  const protobuf_unittest::ForeignMessage* expected = message.MutableExtension(
+      unittest::repeated_foreign_message_extension, 1);
+  scoped_ptr<Message> released(message.GetReflection()->ReleaseLast(
+      &message, descriptor->file()->FindExtensionByName(
+          "repeated_foreign_message_extension")));
+  EXPECT_EQ(expected, released.get());
+
+}
+
+TEST(GeneratedMessageReflectionTest, SwapRepeatedElements) {
+  unittest::TestAllTypes message;
+  TestUtil::ReflectionTester reflection_tester(
+    unittest::TestAllTypes::descriptor());
+
+  TestUtil::SetAllFields(&message);
+
+  // Swap and test that fields are all swapped.
+  reflection_tester.SwapRepeatedsViaReflection(&message);
+  TestUtil::ExpectRepeatedsSwapped(message);
+
+  // Swap back and test that fields are all back to original values.
+  reflection_tester.SwapRepeatedsViaReflection(&message);
+  TestUtil::ExpectAllFieldsSet(message);
+}
+
+TEST(GeneratedMessageReflectionTest, SwapRepeatedElementsExtension) {
+  unittest::TestAllExtensions message;
+  TestUtil::ReflectionTester reflection_tester(
+    unittest::TestAllExtensions::descriptor());
+
+  TestUtil::SetAllExtensions(&message);
+
+  // Swap and test that fields are all swapped.
+  reflection_tester.SwapRepeatedsViaReflection(&message);
+  TestUtil::ExpectRepeatedExtensionsSwapped(message);
+
+  // Swap back and test that fields are all back to original values.
+  reflection_tester.SwapRepeatedsViaReflection(&message);
+  TestUtil::ExpectAllExtensionsSet(message);
+}
+
 TEST(GeneratedMessageReflectionTest, Extensions) {
   // Set every extension to a unique value then go back and check all those
   // values.
@@ -211,7 +375,59 @@ TEST(GeneratedMessageReflectionTest, FindKnownExtensionByName) {
               FindKnownExtensionByName(extension1->full_name()) == NULL);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+TEST(GeneratedMessageReflectionTest, ReleaseMessageTest) {
+  unittest::TestAllTypes message;
+  TestUtil::ReflectionTester reflection_tester(
+    unittest::TestAllTypes::descriptor());
+
+  // When nothing is set, we expect all released messages to be NULL.
+  reflection_tester.ExpectMessagesReleasedViaReflection(
+      &message, TestUtil::ReflectionTester::IS_NULL);
+
+  // After fields are set we should get non-NULL releases.
+  reflection_tester.SetAllFieldsViaReflection(&message);
+  reflection_tester.ExpectMessagesReleasedViaReflection(
+      &message, TestUtil::ReflectionTester::NOT_NULL);
+
+  // After Clear() we may or may not get a message from ReleaseMessage().
+  // This is implementation specific.
+  reflection_tester.SetAllFieldsViaReflection(&message);
+  message.Clear();
+  reflection_tester.ExpectMessagesReleasedViaReflection(
+      &message, TestUtil::ReflectionTester::CAN_BE_NULL);
+
+  // Test a different code path for setting after releasing.
+  TestUtil::SetAllFields(&message);
+  TestUtil::ExpectAllFieldsSet(message);
+}
+
+TEST(GeneratedMessageReflectionTest, ReleaseExtensionMessageTest) {
+  unittest::TestAllExtensions message;
+  TestUtil::ReflectionTester reflection_tester(
+    unittest::TestAllExtensions::descriptor());
+
+  // When nothing is set, we expect all released messages to be NULL.
+  reflection_tester.ExpectMessagesReleasedViaReflection(
+      &message, TestUtil::ReflectionTester::IS_NULL);
+
+  // After fields are set we should get non-NULL releases.
+  reflection_tester.SetAllFieldsViaReflection(&message);
+  reflection_tester.ExpectMessagesReleasedViaReflection(
+      &message, TestUtil::ReflectionTester::NOT_NULL);
+
+  // After Clear() we may or may not get a message from ReleaseMessage().
+  // This is implementation specific.
+  reflection_tester.SetAllFieldsViaReflection(&message);
+  message.Clear();
+  reflection_tester.ExpectMessagesReleasedViaReflection(
+      &message, TestUtil::ReflectionTester::CAN_BE_NULL);
+
+  // Test a different code path for setting after releasing.
+  TestUtil::SetAllExtensions(&message);
+  TestUtil::ExpectAllExtensionsSet(message);
+}
+
+#ifdef PROTOBUF_HAS_DEATH_TEST
 
 TEST(GeneratedMessageReflectionTest, UsageErrors) {
   unittest::TestAllTypes message;
@@ -260,7 +476,7 @@ TEST(GeneratedMessageReflectionTest, UsageErrors) {
 #undef f
 }
 
-#endif  // GTEST_HAS_DEATH_TEST
+#endif  // PROTOBUF_HAS_DEATH_TEST
 
 
 }  // namespace

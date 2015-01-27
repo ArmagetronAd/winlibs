@@ -32,36 +32,30 @@
 //  Based on original Protocol Buffers design by
 //  Sanjay Ghemawat, Jeff Dean, and others.
 
+#include <istream>
 #include <stack>
 #include <google/protobuf/stubs/hash.h>
 
 #include <google/protobuf/message.h>
 
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/reflection_ops.h>
 #include <google/protobuf/wire_format.h>
 #include <google/protobuf/stubs/strutil.h>
-#include <google/protobuf/stubs/substitute.h>
 #include <google/protobuf/stubs/map-util.h>
+#include <google/protobuf/stubs/stl_util.h>
 
 namespace google {
 namespace protobuf {
 
 using internal::WireFormat;
 using internal::ReflectionOps;
-
-static string InitializationErrorMessage(const char* action,
-                                         const Message& message) {
-  return strings::Substitute(
-    "Can't $0 message of type \"$1\" because it is missing required "
-    "fields: $2",
-    action, message.GetDescriptor()->full_name(),
-    message.InitializationErrorString());
-}
 
 Message::~Message() {}
 
@@ -74,6 +68,10 @@ void Message::MergeFrom(const Message& from) {
   ReflectionOps::Merge(from, this);
 }
 
+void Message::CheckTypeAndMergeFrom(const MessageLite& other) {
+  MergeFrom(*down_cast<const Message*>(&other));
+}
+
 void Message::CopyFrom(const Message& from) {
   const Descriptor* descriptor = GetDescriptor();
   GOOGLE_CHECK_EQ(from.GetDescriptor(), descriptor)
@@ -81,6 +79,10 @@ void Message::CopyFrom(const Message& from) {
        "to: " << descriptor->full_name() << ", "
        "from:" << from.GetDescriptor()->full_name();
   ReflectionOps::Copy(from, this);
+}
+
+string Message::GetTypeName() const {
+  return GetDescriptor()->full_name();
 }
 
 void Message::Clear() {
@@ -115,56 +117,6 @@ bool Message::MergePartialFromCodedStream(io::CodedInputStream* input) {
   return WireFormat::ParseAndMergePartial(input, this);
 }
 
-bool Message::MergeFromCodedStream(io::CodedInputStream* input) {
-  if (!MergePartialFromCodedStream(input)) return false;
-  if (!IsInitialized()) {
-    GOOGLE_LOG(ERROR) << InitializationErrorMessage("parse", *this);
-    return false;
-  }
-  return true;
-}
-
-bool Message::ParseFromCodedStream(io::CodedInputStream* input) {
-  Clear();
-  return MergeFromCodedStream(input);
-}
-
-bool Message::ParsePartialFromCodedStream(io::CodedInputStream* input) {
-  Clear();
-  return MergePartialFromCodedStream(input);
-}
-
-bool Message::ParseFromZeroCopyStream(io::ZeroCopyInputStream* input) {
-  io::CodedInputStream decoder(input);
-  return ParseFromCodedStream(&decoder) && decoder.ConsumedEntireMessage();
-}
-
-bool Message::ParsePartialFromZeroCopyStream(io::ZeroCopyInputStream* input) {
-  io::CodedInputStream decoder(input);
-  return ParsePartialFromCodedStream(&decoder) &&
-         decoder.ConsumedEntireMessage();
-}
-
-bool Message::ParseFromString(const string& data) {
-  io::ArrayInputStream input(data.data(), data.size());
-  return ParseFromZeroCopyStream(&input);
-}
-
-bool Message::ParsePartialFromString(const string& data) {
-  io::ArrayInputStream input(data.data(), data.size());
-  return ParsePartialFromZeroCopyStream(&input);
-}
-
-bool Message::ParseFromArray(const void* data, int size) {
-  io::ArrayInputStream input(data, size);
-  return ParseFromZeroCopyStream(&input);
-}
-
-bool Message::ParsePartialFromArray(const void* data, int size) {
-  io::ArrayInputStream input(data, size);
-  return ParsePartialFromZeroCopyStream(&input);
-}
-
 bool Message::ParseFromFileDescriptor(int file_descriptor) {
   io::FileInputStream input(file_descriptor);
   return ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
@@ -186,10 +138,9 @@ bool Message::ParsePartialFromIstream(istream* input) {
 }
 
 
-
-bool Message::SerializeWithCachedSizes(
+void Message::SerializeWithCachedSizes(
     io::CodedOutputStream* output) const {
-  return WireFormat::SerializeWithCachedSizes(*this, GetCachedSize(), output);
+  WireFormat::SerializeWithCachedSizes(*this, GetCachedSize(), output);
 }
 
 int Message::ByteSize() const {
@@ -208,72 +159,6 @@ int Message::SpaceUsed() const {
   return GetReflection()->SpaceUsed(*this);
 }
 
-bool Message::SerializeToCodedStream(io::CodedOutputStream* output) const {
-  GOOGLE_DCHECK(IsInitialized()) << InitializationErrorMessage("serialize", *this);
-  return SerializePartialToCodedStream(output);
-}
-
-bool Message::SerializePartialToCodedStream(
-    io::CodedOutputStream* output) const {
-  ByteSize();  // Force size to be cached.
-  if (!SerializeWithCachedSizes(output)) return false;
-  return true;
-}
-
-bool Message::SerializeToZeroCopyStream(
-    io::ZeroCopyOutputStream* output) const {
-  io::CodedOutputStream encoder(output);
-  return SerializeToCodedStream(&encoder);
-}
-
-bool Message::SerializePartialToZeroCopyStream(
-    io::ZeroCopyOutputStream* output) const {
-  io::CodedOutputStream encoder(output);
-  return SerializePartialToCodedStream(&encoder);
-}
-
-bool Message::AppendToString(string* output) const {
-  GOOGLE_DCHECK(IsInitialized()) << InitializationErrorMessage("serialize", *this);
-  return AppendPartialToString(output);
-}
-
-bool Message::AppendPartialToString(string* output) const {
-  // For efficiency, we'd like to reserve the exact amount of space we need
-  // in the string.
-  int total_size = output->size() + ByteSize();
-  output->reserve(total_size);
-
-  io::StringOutputStream output_stream(output);
-
-  {
-    io::CodedOutputStream encoder(&output_stream);
-    if (!SerializeWithCachedSizes(&encoder)) return false;
-  }
-
-  GOOGLE_CHECK_EQ(output_stream.ByteCount(), total_size);
-  return true;
-}
-
-bool Message::SerializeToString(string* output) const {
-  output->clear();
-  return AppendToString(output);
-}
-
-bool Message::SerializePartialToString(string* output) const {
-  output->clear();
-  return AppendPartialToString(output);
-}
-
-bool Message::SerializeToArray(void* data, int size) const {
-  io::ArrayOutputStream output_stream(data, size);
-  return SerializeToZeroCopyStream(&output_stream);
-}
-
-bool Message::SerializePartialToArray(void* data, int size) const {
-  io::ArrayOutputStream output_stream(data, size);
-  return SerializePartialToZeroCopyStream(&output_stream);
-}
-
 bool Message::SerializeToFileDescriptor(int file_descriptor) const {
   io::FileOutputStream output(file_descriptor);
   return SerializeToZeroCopyStream(&output);
@@ -285,8 +170,11 @@ bool Message::SerializePartialToFileDescriptor(int file_descriptor) const {
 }
 
 bool Message::SerializeToOstream(ostream* output) const {
-  io::OstreamOutputStream zero_copy_output(output);
-  return SerializeToZeroCopyStream(&zero_copy_output);
+  {
+    io::OstreamOutputStream zero_copy_output(output);
+    if (!SerializeToZeroCopyStream(&zero_copy_output)) return false;
+  }
+  return output->good();
 }
 
 bool Message::SerializePartialToOstream(ostream* output) const {
@@ -295,27 +183,46 @@ bool Message::SerializePartialToOstream(ostream* output) const {
 }
 
 
-string Message::SerializeAsString() const {
-  // If the compiler implements the (Named) Return Value Optimization,
-  // the local variable 'result' will not actually reside on the stack
-  // of this function, but will be overlaid with the object that the
-  // caller supplied for the return value to be constructed in.
-  string output;
-  if (!AppendToString(&output))
-    output.clear();
-  return output;
-}
-
-string Message::SerializePartialAsString() const {
-  string output;
-  if (!AppendPartialToString(&output))
-    output.clear();
-  return output;
-}
+// =============================================================================
+// Reflection and associated Template Specializations
 
 Reflection::~Reflection() {}
 
-// ===================================================================
+#define HANDLE_TYPE(TYPE, CPPTYPE, CTYPE)                             \
+template<>                                                            \
+const RepeatedField<TYPE>& Reflection::GetRepeatedField<TYPE>(        \
+    const Message& message, const FieldDescriptor* field) const {     \
+  return *static_cast<RepeatedField<TYPE>* >(                         \
+      MutableRawRepeatedField(const_cast<Message*>(&message),         \
+                          field, CPPTYPE, CTYPE, NULL));              \
+}                                                                     \
+                                                                      \
+template<>                                                            \
+RepeatedField<TYPE>* Reflection::MutableRepeatedField<TYPE>(          \
+    Message* message, const FieldDescriptor* field) const {           \
+  return static_cast<RepeatedField<TYPE>* >(                          \
+      MutableRawRepeatedField(message, field, CPPTYPE, CTYPE, NULL)); \
+}
+
+HANDLE_TYPE(int32,  FieldDescriptor::CPPTYPE_INT32,  -1);
+HANDLE_TYPE(int64,  FieldDescriptor::CPPTYPE_INT64,  -1);
+HANDLE_TYPE(uint32, FieldDescriptor::CPPTYPE_UINT32, -1);
+HANDLE_TYPE(uint64, FieldDescriptor::CPPTYPE_UINT64, -1);
+HANDLE_TYPE(float,  FieldDescriptor::CPPTYPE_FLOAT,  -1);
+HANDLE_TYPE(double, FieldDescriptor::CPPTYPE_DOUBLE, -1);
+HANDLE_TYPE(bool,   FieldDescriptor::CPPTYPE_BOOL,   -1);
+
+
+#undef HANDLE_TYPE
+
+void* Reflection::MutableRawRepeatedString(
+    Message* message, const FieldDescriptor* field, bool is_string) const {
+  return MutableRawRepeatedField(message, field,
+      FieldDescriptor::CPPTYPE_STRING, FieldOptions::STRING, NULL);
+}
+
+
+// =============================================================================
 // MessageFactory
 
 MessageFactory::~MessageFactory() {}
@@ -329,23 +236,49 @@ class GeneratedMessageFactory : public MessageFactory {
 
   static GeneratedMessageFactory* singleton();
 
+  typedef void RegistrationFunc(const string&);
+  void RegisterFile(const char* file, RegistrationFunc* registration_func);
   void RegisterType(const Descriptor* descriptor, const Message* prototype);
 
   // implements MessageFactory ---------------------------------------
   const Message* GetPrototype(const Descriptor* type);
 
  private:
+  // Only written at static init time, so does not require locking.
+  hash_map<const char*, RegistrationFunc*,
+           hash<const char*>, streq> file_map_;
+
+  // Initialized lazily, so requires locking.
+  Mutex mutex_;
   hash_map<const Descriptor*, const Message*> type_map_;
 };
+
+GeneratedMessageFactory* generated_message_factory_ = NULL;
+GOOGLE_PROTOBUF_DECLARE_ONCE(generated_message_factory_once_init_);
+
+void ShutdownGeneratedMessageFactory() {
+  delete generated_message_factory_;
+}
+
+void InitGeneratedMessageFactory() {
+  generated_message_factory_ = new GeneratedMessageFactory;
+  internal::OnShutdown(&ShutdownGeneratedMessageFactory);
+}
 
 GeneratedMessageFactory::GeneratedMessageFactory() {}
 GeneratedMessageFactory::~GeneratedMessageFactory() {}
 
 GeneratedMessageFactory* GeneratedMessageFactory::singleton() {
-  // No need for thread-safety here because this will be called at static
-  // initialization time.  (And GCC4 makes this thread-safe anyway.)
-  static GeneratedMessageFactory singleton;
-  return &singleton;
+  ::google::protobuf::GoogleOnceInit(&generated_message_factory_once_init_,
+                 &InitGeneratedMessageFactory);
+  return generated_message_factory_;
+}
+
+void GeneratedMessageFactory::RegisterFile(
+    const char* file, RegistrationFunc* registration_func) {
+  if (!InsertIfNotPresent(&file_map_, file, registration_func)) {
+    GOOGLE_LOG(FATAL) << "File is already registered: " << file;
+  }
 }
 
 void GeneratedMessageFactory::RegisterType(const Descriptor* descriptor,
@@ -354,19 +287,65 @@ void GeneratedMessageFactory::RegisterType(const Descriptor* descriptor,
     << "Tried to register a non-generated type with the generated "
        "type registry.";
 
+  // This should only be called as a result of calling a file registration
+  // function during GetPrototype(), in which case we already have locked
+  // the mutex.
+  mutex_.AssertHeld();
   if (!InsertIfNotPresent(&type_map_, descriptor, prototype)) {
     GOOGLE_LOG(DFATAL) << "Type is already registered: " << descriptor->full_name();
   }
 }
 
+
 const Message* GeneratedMessageFactory::GetPrototype(const Descriptor* type) {
-  return FindPtrOrNull(type_map_, type);
+  {
+    ReaderMutexLock lock(&mutex_);
+    const Message* result = FindPtrOrNull(type_map_, type);
+    if (result != NULL) return result;
+  }
+
+  // If the type is not in the generated pool, then we can't possibly handle
+  // it.
+  if (type->file()->pool() != DescriptorPool::generated_pool()) return NULL;
+
+  // Apparently the file hasn't been registered yet.  Let's do that now.
+  RegistrationFunc* registration_func =
+      FindPtrOrNull(file_map_, type->file()->name().c_str());
+  if (registration_func == NULL) {
+    GOOGLE_LOG(DFATAL) << "File appears to be in generated pool but wasn't "
+                   "registered: " << type->file()->name();
+    return NULL;
+  }
+
+  WriterMutexLock lock(&mutex_);
+
+  // Check if another thread preempted us.
+  const Message* result = FindPtrOrNull(type_map_, type);
+  if (result == NULL) {
+    // Nope.  OK, register everything.
+    registration_func(type->file()->name());
+    // Should be here now.
+    result = FindPtrOrNull(type_map_, type);
+  }
+
+  if (result == NULL) {
+    GOOGLE_LOG(DFATAL) << "Type appears to be in generated pool but wasn't "
+                << "registered: " << type->full_name();
+  }
+
+  return result;
 }
 
 }  // namespace
 
 MessageFactory* MessageFactory::generated_factory() {
   return GeneratedMessageFactory::singleton();
+}
+
+void MessageFactory::InternalRegisterGeneratedFile(
+    const char* filename, void (*register_messages)(const string&)) {
+  GeneratedMessageFactory::singleton()->RegisterFile(filename,
+                                                     register_messages);
 }
 
 void MessageFactory::InternalRegisterGeneratedMessage(
