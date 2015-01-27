@@ -18,6 +18,7 @@ Proto2 Python primary authors:
   Petar Petrov <petar@google.com>
 
 Large code contributions:
+  Jason Hsueh <jasonh@google.com>
   Joseph Schorr <jschorr@google.com>
   Wenbo Zhu <wenboz@google.com>
 
@@ -34,11 +35,11 @@ Documentation:
 Maven packaging:
   Gregory Kick <gak@google.com>
 
-Non-Google patch contributors:
+Patch contributors:
   Kevin Ko <kevin.s.ko@gmail.com>
     * Small patch to handle trailing slashes in --proto_path flag.
   Johan Euphrosine <proppy@aminche.com>
-    * Small patch to fix Pyhton CallMethod().
+    * Small patch to fix Python CallMethod().
   Ulrich Kunitz <kune@deine-taler.de>
     * Small optimizations to Python serialization.
   Leandro Lucarella <llucax@gmail.com>
@@ -52,4 +53,38 @@ Non-Google patch contributors:
   Vincent Choinière <Choiniere.Vincent@hydro.qc.ca>
     * Tru64 support.
   Monty Taylor <monty.taylor@gmail.com>
-    * Solaris 10 + Sun Studio fix.
+    * Solaris 10 + Sun Studio fixes.
+  Alek Storm <alek.storm@gmail.com>
+    * Slicing support for repeated scalar fields for the Python API.
+  Oleg Smolsky <oleg.smolsky@gmail.com>
+    * MS Visual Studio error format option.
+    * Detect unordered_map in stl_hash.m4.
+  Brian Olson <brianolson@google.com>
+    * gzip/zlib I/O support.
+  Michael Poole <mdpoole@troilus.org>
+    * Fixed warnings about generated constructors not explicitly initializing
+      all fields (only present with certain compiler settings).
+    * Added generation of field number constants.
+  Wink Saville <wink@google.com>
+    * Fixed initialization ordering problem in logging code.
+  Will Pierce <willp@nuclei.com>
+    * Small patch improving performance of in Python serialization.
+  Alexandre Vassalotti <alexandre@peadrop.com>
+    * Emacs mode for Protocol Buffers (editors/protobuf-mode.el).
+  Scott Stafford <scott.stafford@gmail.com>
+    * Added Swap(), SwapElements(), and RemoveLast() to Reflection interface.
+  Alexander Melnikov <alm@sibmail.ru>
+    * HPUX support.
+  Oliver Jowett <oliver.jowett@gmail.com>
+    * Detect whether zlib is new enough in configure script.
+    * Fixes for Solaris 10 32/64-bit confusion.
+  Evan Jones <evanj@mit.edu>
+    * Optimize Java serialization code when writing a small message to a stream.
+    * Optimize Java serialization of strings so that UTF-8 encoding happens only
+      once per string per serialization call.
+    * Clean up some Java warnings.
+    * Fix bug with permanent callbacks that delete themselves when run.
+  Michael Kucharski <m.kucharski@gmail.com>
+    * Added CodedInputStream.getTotalBytesRead().
+  Kacper Kowalik <xarthisius.kk@gmail.com>
+    * Fixed m4/acx_pthread.m4 problem for some Linux distributions.
