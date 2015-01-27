@@ -37,6 +37,7 @@
 
 #include <string>
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/compiler/cpp/cpp_options.h>
 
 namespace google {
 namespace protobuf {
@@ -56,8 +57,8 @@ namespace cpp {
 class ExtensionGenerator {
  public:
   // See generator.cc for the meaning of dllexport_decl.
-  explicit ExtensionGenerator(const FieldDescriptor* descriptor,
-                              const string& dllexport_decl);
+  explicit ExtensionGenerator(const FieldDescriptor* desycriptor,
+                              const Options& options);
   ~ExtensionGenerator();
 
   // Header stuff.
@@ -66,10 +67,13 @@ class ExtensionGenerator {
   // Source file stuff.
   void GenerateDefinition(io::Printer* printer);
 
+  // Generate code to register the extension.
+  void GenerateRegistration(io::Printer* printer);
+
  private:
   const FieldDescriptor* descriptor_;
   string type_traits_;
-  string dllexport_decl_;
+  Options options_;
 
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(ExtensionGenerator);
 };

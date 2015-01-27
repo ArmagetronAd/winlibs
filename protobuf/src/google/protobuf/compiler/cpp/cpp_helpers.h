@@ -35,11 +35,18 @@
 #ifndef GOOGLE_PROTOBUF_COMPILER_CPP_HELPERS_H__
 #define GOOGLE_PROTOBUF_COMPILER_CPP_HELPERS_H__
 
+#include <map>
 #include <string>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/descriptor.pb.h>
 
 namespace google {
 namespace protobuf {
+
+namespace io {
+class Printer;
+}
+
 namespace compiler {
 namespace cpp {
 
@@ -59,11 +66,17 @@ extern const char kThinSeparator[];
 string ClassName(const Descriptor* descriptor, bool qualified);
 string ClassName(const EnumDescriptor* enum_descriptor, bool qualified);
 
+string SuperClassName(const Descriptor* descriptor);
+
 // Get the (unqualified) name that should be used for this field in C++ code.
 // The name is coerced to lower-case to emulate proto1 behavior.  People
 // should be using lowercase-with-underscores style for proto field names
 // anyway, so normally this just returns field->name().
 string FieldName(const FieldDescriptor* field);
+
+// Get the unqualified name that should be used for a field's field
+// number constant.
+string FieldConstantName(const FieldDescriptor *field);
 
 // Returns the scope where the field was defined (for extensions, this is
 // different from the message type to which the field applies).
@@ -71,6 +84,10 @@ inline const Descriptor* FieldScope(const FieldDescriptor* field) {
   return field->is_extension() ?
     field->extension_scope() : field->containing_type();
 }
+
+// Returns the fully-qualified type name field->message_type().  Usually this
+// is just ClassName(field->message_type(), true);
+string FieldMessageTypeName(const FieldDescriptor* field);
 
 // Strips ".proto" or ".protodevel" from the end of a filename.
 string StripProto(const string& filename);
@@ -86,11 +103,80 @@ const char* PrimitiveTypeName(FieldDescriptor::CppType type);
 // methods of WireFormat.  For example, TYPE_INT32 becomes "Int32".
 const char* DeclaredTypeMethodName(FieldDescriptor::Type type);
 
+// Get code that evaluates to the field's default value.
+string DefaultValue(const FieldDescriptor* field);
+
 // Convert a file name into a valid identifier.
 string FilenameIdentifier(const string& filename);
 
-// Return the name of the BuildDescriptors() function for a given file.
-string GlobalBuildDescriptorsName(const string& filename);
+// Return the name of the AddDescriptors() function for a given file.
+string GlobalAddDescriptorsName(const string& filename);
+
+// Return the name of the AssignDescriptors() function for a given file.
+string GlobalAssignDescriptorsName(const string& filename);
+
+// Return the name of the ShutdownFile() function for a given file.
+string GlobalShutdownFileName(const string& filename);
+
+// Escape C++ trigraphs by escaping question marks to \?
+string EscapeTrigraphs(const string& to_escape);
+
+// Do message classes in this file keep track of unknown fields?
+inline bool HasUnknownFields(const FileDescriptor* file) {
+  return file->options().optimize_for() != FileOptions::LITE_RUNTIME;
+}
+
+
+// Does this file have any enum type definitions?
+bool HasEnumDefinitions(const FileDescriptor* file);
+
+// Does this file have generated parsing, serialization, and other
+// standard methods for which reflection-based fallback implementations exist?
+inline bool HasGeneratedMethods(const FileDescriptor* file) {
+  return file->options().optimize_for() != FileOptions::CODE_SIZE;
+}
+
+// Do message classes in this file have descriptor and reflection methods?
+inline bool HasDescriptorMethods(const FileDescriptor* file) {
+  return file->options().optimize_for() != FileOptions::LITE_RUNTIME;
+}
+
+// Should we generate generic services for this file?
+inline bool HasGenericServices(const FileDescriptor* file) {
+  return file->service_count() > 0 &&
+         file->options().optimize_for() != FileOptions::LITE_RUNTIME &&
+         file->options().cc_generic_services();
+}
+
+// Should string fields in this file verify that their contents are UTF-8?
+inline bool HasUtf8Verification(const FileDescriptor* file) {
+  return file->options().optimize_for() != FileOptions::LITE_RUNTIME;
+}
+
+// Should we generate a separate, super-optimized code path for serializing to
+// flat arrays?  We don't do this in Lite mode because we'd rather reduce code
+// size.
+inline bool HasFastArraySerialization(const FileDescriptor* file) {
+  return file->options().optimize_for() == FileOptions::SPEED;
+}
+
+// Returns whether we have to generate code with static initializers.
+bool StaticInitializersForced(const FileDescriptor* file);
+
+// Prints 'with_static_init' if static initializers have to be used for the
+// provided file. Otherwise emits both 'with_static_init' and
+// 'without_static_init' using #ifdef.
+void PrintHandlingOptionalStaticInitializers(
+    const FileDescriptor* file, io::Printer* printer,
+    const char* with_static_init, const char* without_static_init,
+    const char* var1 = NULL, const string& val1 = "",
+    const char* var2 = NULL, const string& val2 = "");
+
+void PrintHandlingOptionalStaticInitializers(
+    const map<string, string>& vars, const FileDescriptor* file,
+    io::Printer* printer, const char* with_static_init,
+    const char* without_static_init);
+
 
 }  // namespace cpp
 }  // namespace compiler

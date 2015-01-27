@@ -36,6 +36,7 @@
 #include <string>
 
 #include <google/protobuf/compiler/java/java_enum.h>
+#include <google/protobuf/compiler/java/java_doc_comment.h>
 #include <google/protobuf/compiler/java/java_helpers.h>
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/descriptor.pb.h>
@@ -67,13 +68,18 @@ EnumGenerator::EnumGenerator(const EnumDescriptor* descriptor)
 EnumGenerator::~EnumGenerator() {}
 
 void EnumGenerator::Generate(io::Printer* printer) {
-  bool is_own_file =
-    descriptor_->containing_type() == NULL &&
-    descriptor_->file()->options().java_multiple_files();
-  printer->Print(
-    "public $static$ enum $classname$ {\n",
-    "static", is_own_file ? "" : "static",
-    "classname", descriptor_->name());
+  WriteEnumDocComment(printer, descriptor_);
+  if (HasDescriptorMethods(descriptor_)) {
+    printer->Print(
+      "public enum $classname$\n"
+      "    implements com.google.protobuf.ProtocolMessageEnum {\n",
+      "classname", descriptor_->name());
+  } else {
+    printer->Print(
+      "public enum $classname$\n"
+      "    implements com.google.protobuf.Internal.EnumLite {\n",
+      "classname", descriptor_->name());
+  }
   printer->Indent();
 
   for (int i = 0; i < canonical_values_.size(); i++) {
@@ -81,6 +87,7 @@ void EnumGenerator::Generate(io::Printer* printer) {
     vars["name"] = canonical_values_[i]->name();
     vars["index"] = SimpleItoa(canonical_values_[i]->index());
     vars["number"] = SimpleItoa(canonical_values_[i]->number());
+    WriteEnumValueDocComment(printer, canonical_values_[i]);
     printer->Print(vars,
       "$name$($index$, $number$),\n");
   }
@@ -96,9 +103,20 @@ void EnumGenerator::Generate(io::Printer* printer) {
     vars["classname"] = descriptor_->name();
     vars["name"] = aliases_[i].value->name();
     vars["canonical_name"] = aliases_[i].canonical_value->name();
+    WriteEnumValueDocComment(printer, aliases_[i].value);
     printer->Print(vars,
       "public static final $classname$ $name$ = $canonical_name$;\n");
   }
+
+  for (int i = 0; i < descriptor_->value_count(); i++) {
+    map<string, string> vars;
+    vars["name"] = descriptor_->value(i)->name();
+    vars["number"] = SimpleItoa(descriptor_->value(i)->number());
+    WriteEnumValueDocComment(printer, descriptor_->value(i));
+    printer->Print(vars,
+      "public static final int $name$_VALUE = $number$;\n");
+  }
+  printer->Print("\n");
 
   // -----------------------------------------------------------------
 
@@ -125,85 +143,126 @@ void EnumGenerator::Generate(io::Printer* printer) {
     "    default: return null;\n"
     "  }\n"
     "}\n"
-    "\n");
+    "\n"
+    "public static com.google.protobuf.Internal.EnumLiteMap<$classname$>\n"
+    "    internalGetValueMap() {\n"
+    "  return internalValueMap;\n"
+    "}\n"
+    "private static com.google.protobuf.Internal.EnumLiteMap<$classname$>\n"
+    "    internalValueMap =\n"
+    "      new com.google.protobuf.Internal.EnumLiteMap<$classname$>() {\n"
+    "        public $classname$ findValueByNumber(int number) {\n"
+    "          return $classname$.valueOf(number);\n"
+    "        }\n"
+    "      };\n"
+    "\n",
+    "classname", descriptor_->name());
 
   // -----------------------------------------------------------------
   // Reflection
 
-  printer->Print(
-    "public final com.google.protobuf.Descriptors.EnumValueDescriptor\n"
-    "    getValueDescriptor() {\n"
-    "  return getDescriptor().getValues().get(index);\n"
-    "}\n"
-    "public final com.google.protobuf.Descriptors.EnumDescriptor\n"
-    "    getDescriptorForType() {\n"
-    "  return getDescriptor();\n"
-    "}\n"
-    "public static final com.google.protobuf.Descriptors.EnumDescriptor\n"
-    "    getDescriptor() {\n");
-
-  // TODO(kenton):  Cache statically?  Note that we can't access descriptors
-  //   at module init time because it wouldn't work with descriptor.proto, but
-  //   we can cache the value the first time getDescriptor() is called.
-  if (descriptor_->containing_type() == NULL) {
+  if (HasDescriptorMethods(descriptor_)) {
     printer->Print(
-      "  return $file$.getDescriptor().getEnumTypes().get($index$);\n",
-      "file", ClassName(descriptor_->file()),
-      "index", SimpleItoa(descriptor_->index()));
-  } else {
+      "public final com.google.protobuf.Descriptors.EnumValueDescriptor\n"
+      "    getValueDescriptor() {\n"
+      "  return getDescriptor().getValues().get(index);\n"
+      "}\n"
+      "public final com.google.protobuf.Descriptors.EnumDescriptor\n"
+      "    getDescriptorForType() {\n"
+      "  return getDescriptor();\n"
+      "}\n"
+      "public static final com.google.protobuf.Descriptors.EnumDescriptor\n"
+      "    getDescriptor() {\n");
+
+    // TODO(kenton):  Cache statically?  Note that we can't access descriptors
+    //   at module init time because it wouldn't work with descriptor.proto, but
+    //   we can cache the value the first time getDescriptor() is called.
+    if (descriptor_->containing_type() == NULL) {
+      printer->Print(
+        "  return $file$.getDescriptor().getEnumTypes().get($index$);\n",
+        "file", ClassName(descriptor_->file()),
+        "index", SimpleItoa(descriptor_->index()));
+    } else {
+      printer->Print(
+        "  return $parent$.getDescriptor().getEnumTypes().get($index$);\n",
+        "parent", ClassName(descriptor_->containing_type()),
+        "index", SimpleItoa(descriptor_->index()));
+    }
+
     printer->Print(
-      "  return $parent$.getDescriptor().getEnumTypes().get($index$);\n",
-      "parent", ClassName(descriptor_->containing_type()),
-      "index", SimpleItoa(descriptor_->index()));
+      "}\n"
+      "\n"
+      "private static final $classname$[] VALUES = ",
+      "classname", descriptor_->name());
+
+    if (CanUseEnumValues()) {
+      // If the constants we are going to output are exactly the ones we
+      // have declared in the Java enum in the same order, then we can use
+      // the values() method that the Java compiler automatically generates
+      // for every enum.
+      printer->Print("values();\n");
+    } else {
+      printer->Print(
+        "{\n"
+        "  ");
+      for (int i = 0; i < descriptor_->value_count(); i++) {
+        printer->Print("$name$, ",
+          "name", descriptor_->value(i)->name());
+      }
+      printer->Print(
+          "\n"
+          "};\n");
+    }
+
+    printer->Print(
+      "\n"
+      "public static $classname$ valueOf(\n"
+      "    com.google.protobuf.Descriptors.EnumValueDescriptor desc) {\n"
+      "  if (desc.getType() != getDescriptor()) {\n"
+      "    throw new java.lang.IllegalArgumentException(\n"
+      "      \"EnumValueDescriptor is not for this type.\");\n"
+      "  }\n"
+      "  return VALUES[desc.getIndex()];\n"
+      "}\n"
+      "\n",
+      "classname", descriptor_->name());
+
+    // index is only used for reflection; lite implementation does not need it
+    printer->Print("private final int index;\n");
   }
-
-  printer->Print(
-    "}\n"
-    "\n"
-    "private static final $classname$[] VALUES = {\n"
-    "  ",
-    "classname", descriptor_->name());
-
-  for (int i = 0; i < descriptor_->value_count(); i++) {
-    printer->Print("$name$, ",
-      "name", descriptor_->value(i)->name());
-  }
-
-  printer->Print(
-    "\n"
-    "};\n"
-    "public static $classname$ valueOf(\n"
-    "    com.google.protobuf.Descriptors.EnumValueDescriptor desc) {\n"
-    "  if (desc.getType() != getDescriptor()) {\n"
-    "    throw new java.lang.IllegalArgumentException(\n"
-    "      \"EnumValueDescriptor is not for this type.\");\n"
-    "  }\n"
-    "  return VALUES[desc.getIndex()];\n"
-    "}\n",
-    "classname", descriptor_->name());
 
   // -----------------------------------------------------------------
 
   printer->Print(
-    "private final int index;\n"
-    "private final int value;\n"
-    "private $classname$(int index, int value) {\n"
-    "  this.index = index;\n"
-    "  this.value = value;\n"
-    "}\n",
+    "private final int value;\n\n"
+    "private $classname$(int index, int value) {\n",
     "classname", descriptor_->name());
+  if (HasDescriptorMethods(descriptor_)) {
+    printer->Print("  this.index = index;\n");
+  }
+  printer->Print(
+    "  this.value = value;\n"
+    "}\n");
 
-  // Force the static initialization code for the file to run, since it may
-  // initialize static variables declared in this class.
   printer->Print(
     "\n"
-    "static {\n"
-    "  $file$.getDescriptor();\n"
-    "}\n",
-    "file", ClassName(descriptor_->file()));
+    "// @@protoc_insertion_point(enum_scope:$full_name$)\n",
+    "full_name", descriptor_->full_name());
 
   printer->Outdent();
   printer->Print("}\n\n");
+}
+
+bool EnumGenerator::CanUseEnumValues() {
+  if (canonical_values_.size() != descriptor_->value_count()) {
+    return false;
+  }
+  for (int i = 0; i < descriptor_->value_count(); i++) {
+    if (descriptor_->value(i)->name() != canonical_values_[i]->name()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace java

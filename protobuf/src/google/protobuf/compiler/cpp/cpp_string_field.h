@@ -46,7 +46,8 @@ namespace cpp {
 
 class StringFieldGenerator : public FieldGenerator {
  public:
-  explicit StringFieldGenerator(const FieldDescriptor* descriptor);
+  explicit StringFieldGenerator(const FieldDescriptor* descriptor,
+                                const Options& options);
   ~StringFieldGenerator();
 
   // implements FieldGenerator ---------------------------------------
@@ -57,10 +58,13 @@ class StringFieldGenerator : public FieldGenerator {
   void GenerateClearingCode(io::Printer* printer) const;
   void GenerateMergingCode(io::Printer* printer) const;
   void GenerateSwappingCode(io::Printer* printer) const;
-  void GenerateInitializer(io::Printer* printer) const;
+  void GenerateConstructorCode(io::Printer* printer) const;
   void GenerateDestructorCode(io::Printer* printer) const;
+  void GenerateDefaultInstanceAllocator(io::Printer* printer) const;
+  void GenerateShutdownCode(io::Printer* printer) const;
   void GenerateMergeFromCodedStream(io::Printer* printer) const;
   void GenerateSerializeWithCachedSizes(io::Printer* printer) const;
+  void GenerateSerializeWithCachedSizesToArray(io::Printer* printer) const;
   void GenerateByteSize(io::Printer* printer) const;
 
  private:
@@ -72,7 +76,8 @@ class StringFieldGenerator : public FieldGenerator {
 
 class RepeatedStringFieldGenerator : public FieldGenerator {
  public:
-  explicit RepeatedStringFieldGenerator(const FieldDescriptor* descriptor);
+  explicit RepeatedStringFieldGenerator(const FieldDescriptor* descriptor,
+                                        const Options& options);
   ~RepeatedStringFieldGenerator();
 
   // implements FieldGenerator ---------------------------------------
@@ -82,9 +87,10 @@ class RepeatedStringFieldGenerator : public FieldGenerator {
   void GenerateClearingCode(io::Printer* printer) const;
   void GenerateMergingCode(io::Printer* printer) const;
   void GenerateSwappingCode(io::Printer* printer) const;
-  void GenerateInitializer(io::Printer* printer) const;
+  void GenerateConstructorCode(io::Printer* printer) const;
   void GenerateMergeFromCodedStream(io::Printer* printer) const;
   void GenerateSerializeWithCachedSizes(io::Printer* printer) const;
+  void GenerateSerializeWithCachedSizesToArray(io::Printer* printer) const;
   void GenerateByteSize(io::Printer* printer) const;
 
  private:

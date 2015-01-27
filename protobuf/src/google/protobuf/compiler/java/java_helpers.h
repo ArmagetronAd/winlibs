@@ -36,6 +36,7 @@
 #define GOOGLE_PROTOBUF_COMPILER_JAVA_HELPERS_H__
 
 #include <string>
+#include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/descriptor.h>
 
 namespace google {
@@ -67,6 +68,9 @@ string FileClassName(const FileDescriptor* file);
 // Returns the file's Java package name.
 string FileJavaPackage(const FileDescriptor* file);
 
+// Returns output directory for the given package name.
+string JavaPackageToDir(string package_name);
+
 // Converts the given fully-qualified name in the proto namespace to its
 // fully-qualified name in the Java namespace, given that it is in the given
 // file.
@@ -74,19 +78,23 @@ string ToJavaName(const string& full_name, const FileDescriptor* file);
 
 // These return the fully-qualified class name corresponding to the given
 // descriptor.
-inline string ClassName(const Descriptor* descriptor) {
-  return ToJavaName(descriptor->full_name(), descriptor->file());
-}
-inline string ClassName(const EnumDescriptor* descriptor) {
-  return ToJavaName(descriptor->full_name(), descriptor->file());
-}
-inline string ClassName(const ServiceDescriptor* descriptor) {
-  return ToJavaName(descriptor->full_name(), descriptor->file());
-}
+string ClassName(const Descriptor* descriptor);
+string ClassName(const EnumDescriptor* descriptor);
+string ClassName(const ServiceDescriptor* descriptor);
+string ClassName(const FileDescriptor* descriptor);
+
 inline string ExtensionIdentifierName(const FieldDescriptor* descriptor) {
   return ToJavaName(descriptor->full_name(), descriptor->file());
 }
-string ClassName(const FileDescriptor* descriptor);
+
+// Get the unqualified name that should be used for a field's field
+// number constant.
+string FieldConstantName(const FieldDescriptor *field);
+
+// Returns the type of the FieldDescriptor.
+// This does nothing interesting for the open source release, but is used for
+// hacks that improve compatability with version 1 protocol buffers at Google.
+FieldDescriptor::Type GetType(const FieldDescriptor* field);
 
 enum JavaType {
   JAVATYPE_INT,
@@ -100,16 +108,109 @@ enum JavaType {
   JAVATYPE_MESSAGE
 };
 
-JavaType GetJavaType(FieldDescriptor::Type field_type);
-
-inline JavaType GetJavaType(const FieldDescriptor* field) {
-  return GetJavaType(field->type());
-}
+JavaType GetJavaType(const FieldDescriptor* field);
 
 // Get the fully-qualified class name for a boxed primitive type, e.g.
 // "java.lang.Integer" for JAVATYPE_INT.  Returns NULL for enum and message
 // types.
 const char* BoxedPrimitiveTypeName(JavaType type);
+
+string DefaultValue(const FieldDescriptor* field);
+bool IsDefaultValueJavaDefault(const FieldDescriptor* field);
+
+// Does this message class keep track of unknown fields?
+inline bool HasUnknownFields(const Descriptor* descriptor) {
+  return descriptor->file()->options().optimize_for() !=
+           FileOptions::LITE_RUNTIME;
+}
+
+// Does this message class have generated parsing, serialization, and other
+// standard methods for which reflection-based fallback implementations exist?
+inline bool HasGeneratedMethods(const Descriptor* descriptor) {
+  return descriptor->file()->options().optimize_for() !=
+           FileOptions::CODE_SIZE;
+}
+
+// Does this message have specialized equals() and hashCode() methods?
+inline bool HasEqualsAndHashCode(const Descriptor* descriptor) {
+  return descriptor->file()->options().java_generate_equals_and_hash();
+}
+
+// Does this message class have descriptor and reflection methods?
+inline bool HasDescriptorMethods(const Descriptor* descriptor) {
+  return descriptor->file()->options().optimize_for() !=
+           FileOptions::LITE_RUNTIME;
+}
+inline bool HasDescriptorMethods(const EnumDescriptor* descriptor) {
+  return descriptor->file()->options().optimize_for() !=
+           FileOptions::LITE_RUNTIME;
+}
+inline bool HasDescriptorMethods(const FileDescriptor* descriptor) {
+  return descriptor->options().optimize_for() !=
+           FileOptions::LITE_RUNTIME;
+}
+
+inline bool HasNestedBuilders(const Descriptor* descriptor) {
+  // The proto-lite version doesn't support nested builders.
+  return descriptor->file()->options().optimize_for() !=
+           FileOptions::LITE_RUNTIME;
+}
+
+// Should we generate generic services for this file?
+inline bool HasGenericServices(const FileDescriptor *file) {
+  return file->service_count() > 0 &&
+         file->options().optimize_for() != FileOptions::LITE_RUNTIME &&
+         file->options().java_generic_services();
+}
+
+
+// Methods for shared bitfields.
+
+// Gets the name of the shared bitfield for the given index.
+string GetBitFieldName(int index);
+
+// Gets the name of the shared bitfield for the given bit index.
+// Effectively, GetBitFieldName(bitIndex / 32)
+string GetBitFieldNameForBit(int bitIndex);
+
+// Generates the java code for the expression that returns the boolean value
+// of the bit of the shared bitfields for the given bit index.
+// Example: "((bitField1_ & 0x04) == 0x04)"
+string GenerateGetBit(int bitIndex);
+
+// Generates the java code for the expression that sets the bit of the shared
+// bitfields for the given bit index.
+// Example: "bitField1_ = (bitField1_ | 0x04)"
+string GenerateSetBit(int bitIndex);
+
+// Generates the java code for the expression that clears the bit of the shared
+// bitfields for the given bit index.
+// Example: "bitField1_ = (bitField1_ & ~0x04)"
+string GenerateClearBit(int bitIndex);
+
+// Does the same as GenerateGetBit but operates on the bit field on a local
+// variable. This is used by the builder to copy the value in the builder to
+// the message.
+// Example: "((from_bitField1_ & 0x04) == 0x04)"
+string GenerateGetBitFromLocal(int bitIndex);
+
+// Does the same as GenerateSetBit but operates on the bit field on a local
+// variable. This is used by the builder to copy the value in the builder to
+// the message.
+// Example: "to_bitField1_ = (to_bitField1_ | 0x04)"
+string GenerateSetBitToLocal(int bitIndex);
+
+// Does the same as GenerateGetBit but operates on the bit field on a local
+// variable. This is used by the parsing constructor to record if a repeated
+// field is mutable.
+// Example: "((mutable_bitField1_ & 0x04) == 0x04)"
+string GenerateGetBitMutableLocal(int bitIndex);
+
+// Does the same as GenerateSetBit but operates on the bit field on a local
+// variable. This is used by the parsing constructor to record if a repeated
+// field is mutable.
+// Example: "mutable_bitField1_ = (mutable_bitField1_ | 0x04)"
+string GenerateSetBitMutableLocal(int bitIndex);
 
 }  // namespace java
 }  // namespace compiler

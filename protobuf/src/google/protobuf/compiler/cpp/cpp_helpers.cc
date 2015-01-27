@@ -32,12 +32,17 @@
 //  Based on original Protocol Buffers design by
 //  Sanjay Ghemawat, Jeff Dean, and others.
 
+#include <limits>
+#include <map>
 #include <vector>
 #include <google/protobuf/stubs/hash.h>
 
 #include <google/protobuf/compiler/cpp/cpp_helpers.h>
+#include <google/protobuf/io/printer.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/stubs/strutil.h>
+#include <google/protobuf/stubs/substitute.h>
+
 
 namespace google {
 namespace protobuf {
@@ -77,6 +82,45 @@ hash_set<string> MakeKeywordsMap() {
 
 hash_set<string> kKeywords = MakeKeywordsMap();
 
+string UnderscoresToCamelCase(const string& input, bool cap_next_letter) {
+  string result;
+  // Note:  I distrust ctype.h due to locales.
+  for (int i = 0; i < input.size(); i++) {
+    if ('a' <= input[i] && input[i] <= 'z') {
+      if (cap_next_letter) {
+        result += input[i] + ('A' - 'a');
+      } else {
+        result += input[i];
+      }
+      cap_next_letter = false;
+    } else if ('A' <= input[i] && input[i] <= 'Z') {
+      // Capital letters are left as-is.
+      result += input[i];
+      cap_next_letter = false;
+    } else if ('0' <= input[i] && input[i] <= '9') {
+      result += input[i];
+      cap_next_letter = true;
+    } else {
+      cap_next_letter = true;
+    }
+  }
+  return result;
+}
+
+// Returns whether the provided descriptor has an extension. This includes its
+// nested types.
+bool HasExtension(const Descriptor* descriptor) {
+  if (descriptor->extension_count() > 0) {
+    return true;
+  }
+  for (int i = 0; i < descriptor->nested_type_count(); ++i) {
+    if (HasExtension(descriptor->nested_type(i))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 const char kThickSeparator[] =
@@ -85,6 +129,7 @@ const char kThinSeparator[] =
   "// -------------------------------------------------------------------\n";
 
 string ClassName(const Descriptor* descriptor, bool qualified) {
+
   // Find "outer", the descriptor of the top-level message in which
   // "descriptor" is embedded.
   const Descriptor* outer = descriptor;
@@ -103,7 +148,7 @@ string ClassName(const Descriptor* descriptor, bool qualified) {
 string ClassName(const EnumDescriptor* enum_descriptor, bool qualified) {
   if (enum_descriptor->containing_type() == NULL) {
     if (qualified) {
-      return DotsToColons(enum_descriptor->full_name());
+      return "::" + DotsToColons(enum_descriptor->full_name());
     } else {
       return enum_descriptor->name();
     }
@@ -115,6 +160,12 @@ string ClassName(const EnumDescriptor* enum_descriptor, bool qualified) {
   }
 }
 
+
+string SuperClassName(const Descriptor* descriptor) {
+  return HasDescriptorMethods(descriptor->file()) ?
+      "::google::protobuf::Message" : "::google::protobuf::MessageLite";
+}
+
 string FieldName(const FieldDescriptor* field) {
   string result = field->name();
   LowerString(&result);
@@ -122,6 +173,28 @@ string FieldName(const FieldDescriptor* field) {
     result.append("_");
   }
   return result;
+}
+
+string FieldConstantName(const FieldDescriptor *field) {
+  string field_name = UnderscoresToCamelCase(field->name(), true);
+  string result = "k" + field_name + "FieldNumber";
+
+  if (!field->is_extension() &&
+      field->containing_type()->FindFieldByCamelcaseName(
+        field->camelcase_name()) != field) {
+    // This field's camelcase name is not unique.  As a hack, add the field
+    // number to the constant name.  This makes the constant rather useless,
+    // but what can we do?
+    result += "_" + SimpleItoa(field->number());
+  }
+
+  return result;
+}
+
+string FieldMessageTypeName(const FieldDescriptor* field) {
+  // Note:  The Google-internal version of Protocol Buffers uses this function
+  //   as a hook point for hacks to support legacy code.
+  return ClassName(field->message_type(), true);
 }
 
 string StripProto(const string& filename) {
@@ -183,6 +256,84 @@ const char* DeclaredTypeMethodName(FieldDescriptor::Type type) {
   return "";
 }
 
+string DefaultValue(const FieldDescriptor* field) {
+  switch (field->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_INT32:
+      // gcc rejects the decimal form of kint32min and kint64min.
+      if (field->default_value_int32() == kint32min) {
+        // Make sure we are in a 2's complement system.
+        GOOGLE_COMPILE_ASSERT(kint32min == -0x80000000, kint32min_value_error);
+        return "-0x80000000";
+      }
+      return SimpleItoa(field->default_value_int32());
+    case FieldDescriptor::CPPTYPE_UINT32:
+      return SimpleItoa(field->default_value_uint32()) + "u";
+    case FieldDescriptor::CPPTYPE_INT64:
+      // See the comments for CPPTYPE_INT32.
+      if (field->default_value_int64() == kint64min) {
+        // Make sure we are in a 2's complement system.
+        GOOGLE_COMPILE_ASSERT(kint64min == GOOGLE_LONGLONG(-0x8000000000000000),
+                       kint64min_value_error);
+        return "GOOGLE_LONGLONG(-0x8000000000000000)";
+      }
+      return "GOOGLE_LONGLONG(" + SimpleItoa(field->default_value_int64()) + ")";
+    case FieldDescriptor::CPPTYPE_UINT64:
+      return "GOOGLE_ULONGLONG(" + SimpleItoa(field->default_value_uint64())+ ")";
+    case FieldDescriptor::CPPTYPE_DOUBLE: {
+      double value = field->default_value_double();
+      if (value == numeric_limits<double>::infinity()) {
+        return "::google::protobuf::internal::Infinity()";
+      } else if (value == -numeric_limits<double>::infinity()) {
+        return "-::google::protobuf::internal::Infinity()";
+      } else if (value != value) {
+        return "::google::protobuf::internal::NaN()";
+      } else {
+        return SimpleDtoa(value);
+      }
+    }
+    case FieldDescriptor::CPPTYPE_FLOAT:
+      {
+        float value = field->default_value_float();
+        if (value == numeric_limits<float>::infinity()) {
+          return "static_cast<float>(::google::protobuf::internal::Infinity())";
+        } else if (value == -numeric_limits<float>::infinity()) {
+          return "static_cast<float>(-::google::protobuf::internal::Infinity())";
+        } else if (value != value) {
+          return "static_cast<float>(::google::protobuf::internal::NaN())";
+        } else {
+          string float_value = SimpleFtoa(value);
+          // If floating point value contains a period (.) or an exponent
+          // (either E or e), then append suffix 'f' to make it a float
+          // literal.
+          if (float_value.find_first_of(".eE") != string::npos) {
+            float_value.push_back('f');
+          }
+          return float_value;
+        }
+      }
+    case FieldDescriptor::CPPTYPE_BOOL:
+      return field->default_value_bool() ? "true" : "false";
+    case FieldDescriptor::CPPTYPE_ENUM:
+      // Lazy:  Generate a static_cast because we don't have a helper function
+      //   that constructs the full name of an enum value.
+      return strings::Substitute(
+          "static_cast< $0 >($1)",
+          ClassName(field->enum_type(), true),
+          field->default_value_enum()->number());
+    case FieldDescriptor::CPPTYPE_STRING:
+      return "\"" + EscapeTrigraphs(
+        CEscape(field->default_value_string())) +
+        "\"";
+    case FieldDescriptor::CPPTYPE_MESSAGE:
+      return FieldMessageTypeName(field) + "::default_instance()";
+  }
+  // Can't actually get here; make compiler happy.  (We could add a default
+  // case above but then we wouldn't get the nice compiler warning when a
+  // new type is added.)
+  GOOGLE_LOG(FATAL) << "Can't get here.";
+  return "";
+}
+
 // Convert a file name into a valid identifier.
 string FilenameIdentifier(const string& filename) {
   string result;
@@ -200,9 +351,85 @@ string FilenameIdentifier(const string& filename) {
   return result;
 }
 
-// Return the name of the BuildDescriptors() function for a given file.
-string GlobalBuildDescriptorsName(const string& filename) {
-  return "protobuf_BuildDesc_" + FilenameIdentifier(filename);
+// Return the name of the AddDescriptors() function for a given file.
+string GlobalAddDescriptorsName(const string& filename) {
+  return "protobuf_AddDesc_" + FilenameIdentifier(filename);
+}
+
+// Return the name of the AssignDescriptors() function for a given file.
+string GlobalAssignDescriptorsName(const string& filename) {
+  return "protobuf_AssignDesc_" + FilenameIdentifier(filename);
+}
+
+// Return the name of the ShutdownFile() function for a given file.
+string GlobalShutdownFileName(const string& filename) {
+  return "protobuf_ShutdownFile_" + FilenameIdentifier(filename);
+}
+
+// Escape C++ trigraphs by escaping question marks to \?
+string EscapeTrigraphs(const string& to_escape) {
+  return StringReplace(to_escape, "?", "\\?", true);
+}
+
+bool StaticInitializersForced(const FileDescriptor* file) {
+  if (HasDescriptorMethods(file) || file->extension_count() > 0) {
+    return true;
+  }
+  for (int i = 0; i < file->message_type_count(); ++i) {
+    if (HasExtension(file->message_type(i))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void PrintHandlingOptionalStaticInitializers(
+    const FileDescriptor* file, io::Printer* printer,
+    const char* with_static_init, const char* without_static_init,
+    const char* var1, const string& val1,
+    const char* var2, const string& val2) {
+  map<string, string> vars;
+  if (var1) {
+    vars[var1] = val1;
+  }
+  if (var2) {
+    vars[var2] = val2;
+  }
+  PrintHandlingOptionalStaticInitializers(
+      vars, file, printer, with_static_init, without_static_init);
+}
+
+void PrintHandlingOptionalStaticInitializers(
+    const map<string, string>& vars, const FileDescriptor* file,
+    io::Printer* printer, const char* with_static_init,
+    const char* without_static_init) {
+  if (StaticInitializersForced(file)) {
+    printer->Print(vars, with_static_init);
+  } else {
+    printer->Print(vars, (string(
+      "#ifdef GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER\n") +
+      without_static_init +
+      "#else\n" +
+      with_static_init +
+      "#endif\n").c_str());
+  }
+}
+
+
+static bool HasEnumDefinitions(const Descriptor* message_type) {
+  if (message_type->enum_type_count() > 0) return true;
+  for (int i = 0; i < message_type->nested_type_count(); ++i) {
+    if (HasEnumDefinitions(message_type->nested_type(i))) return true;
+  }
+  return false;
+}
+
+bool HasEnumDefinitions(const FileDescriptor* file) {
+  if (file->enum_type_count() > 0) return true;
+  for (int i = 0; i < file->message_type_count(); ++i) {
+    if (HasEnumDefinitions(file->message_type(i))) return true;
+  }
+  return false;
 }
 
 }  // namespace cpp

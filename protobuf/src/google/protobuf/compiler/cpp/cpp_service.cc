@@ -43,14 +43,14 @@ namespace compiler {
 namespace cpp {
 
 ServiceGenerator::ServiceGenerator(const ServiceDescriptor* descriptor,
-                                   const string& dllexport_decl)
+                                   const Options& options)
   : descriptor_(descriptor) {
   vars_["classname"] = descriptor_->name();
   vars_["full_name"] = descriptor_->full_name();
-  if (dllexport_decl.empty()) {
+  if (options.dllexport_decl.empty()) {
     vars_["dllexport"] = "";
   } else {
-    vars_["dllexport"] = dllexport_decl + " ";
+    vars_["dllexport"] = options.dllexport_decl + " ";
   }
 }
 
@@ -176,10 +176,12 @@ void ServiceGenerator::GenerateImplementation(io::Printer* printer) {
     "$classname$::~$classname$() {}\n"
     "\n"
     "const ::google::protobuf::ServiceDescriptor* $classname$::descriptor() {\n"
+    "  protobuf_AssignDescriptorsOnce();\n"
     "  return $classname$_descriptor_;\n"
     "}\n"
     "\n"
     "const ::google::protobuf::ServiceDescriptor* $classname$::GetDescriptor() {\n"
+    "  protobuf_AssignDescriptorsOnce();\n"
     "  return $classname$_descriptor_;\n"
     "}\n"
     "\n");
@@ -247,7 +249,7 @@ void ServiceGenerator::GenerateCallMethod(io::Printer* printer) {
     sub_vars["input_type"] = ClassName(method->input_type(), true);
     sub_vars["output_type"] = ClassName(method->output_type(), true);
 
-    // Note:  ::google::protobuf::down_cast does not work here because it only works on pointers,
+    // Note:  down_cast does not work here because it only works on pointers,
     //   not references.
     printer->Print(sub_vars,
       "    case $index$:\n"
@@ -279,7 +281,7 @@ void ServiceGenerator::GenerateGetPrototype(RequestOrResponse which,
 
   printer->Print(vars_,
     "    const ::google::protobuf::MethodDescriptor* method) const {\n"
-    "  GOOGLE_DCHECK_EQ(method->service(), $classname$_descriptor_);\n"
+    "  GOOGLE_DCHECK_EQ(method->service(), descriptor());\n"
     "  switch(method->index()) {\n");
 
   for (int i = 0; i < descriptor_->method_count(); i++) {
@@ -320,7 +322,7 @@ void ServiceGenerator::GenerateStubMethods(io::Printer* printer) {
       "                              const $input_type$* request,\n"
       "                              $output_type$* response,\n"
       "                              ::google::protobuf::Closure* done) {\n"
-      "  channel_->CallMethod($classname$_descriptor_->method($index$),\n"
+      "  channel_->CallMethod(descriptor()->method($index$),\n"
       "                       controller, request, response, done);\n"
       "}\n");
   }

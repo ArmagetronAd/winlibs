@@ -46,7 +46,8 @@ namespace cpp {
 
 class MessageFieldGenerator : public FieldGenerator {
  public:
-  explicit MessageFieldGenerator(const FieldDescriptor* descriptor);
+  explicit MessageFieldGenerator(const FieldDescriptor* descriptor,
+                                 const Options& options);
   ~MessageFieldGenerator();
 
   // implements FieldGenerator ---------------------------------------
@@ -56,9 +57,10 @@ class MessageFieldGenerator : public FieldGenerator {
   void GenerateClearingCode(io::Printer* printer) const;
   void GenerateMergingCode(io::Printer* printer) const;
   void GenerateSwappingCode(io::Printer* printer) const;
-  void GenerateInitializer(io::Printer* printer) const;
+  void GenerateConstructorCode(io::Printer* printer) const;
   void GenerateMergeFromCodedStream(io::Printer* printer) const;
   void GenerateSerializeWithCachedSizes(io::Printer* printer) const;
+  void GenerateSerializeWithCachedSizesToArray(io::Printer* printer) const;
   void GenerateByteSize(io::Printer* printer) const;
 
  private:
@@ -70,7 +72,8 @@ class MessageFieldGenerator : public FieldGenerator {
 
 class RepeatedMessageFieldGenerator : public FieldGenerator {
  public:
-  explicit RepeatedMessageFieldGenerator(const FieldDescriptor* descriptor);
+  explicit RepeatedMessageFieldGenerator(const FieldDescriptor* descriptor,
+                                         const Options& options);
   ~RepeatedMessageFieldGenerator();
 
   // implements FieldGenerator ---------------------------------------
@@ -80,9 +83,10 @@ class RepeatedMessageFieldGenerator : public FieldGenerator {
   void GenerateClearingCode(io::Printer* printer) const;
   void GenerateMergingCode(io::Printer* printer) const;
   void GenerateSwappingCode(io::Printer* printer) const;
-  void GenerateInitializer(io::Printer* printer) const;
+  void GenerateConstructorCode(io::Printer* printer) const;
   void GenerateMergeFromCodedStream(io::Printer* printer) const;
   void GenerateSerializeWithCachedSizes(io::Printer* printer) const;
+  void GenerateSerializeWithCachedSizesToArray(io::Printer* printer) const;
   void GenerateByteSize(io::Printer* printer) const;
 
  private:

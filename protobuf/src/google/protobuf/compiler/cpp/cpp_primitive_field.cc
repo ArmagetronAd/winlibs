@@ -35,7 +35,7 @@
 #include <google/protobuf/compiler/cpp/cpp_primitive_field.h>
 #include <google/protobuf/compiler/cpp/cpp_helpers.h>
 #include <google/protobuf/io/printer.h>
-#include <google/protobuf/wire_format_inl.h>
+#include <google/protobuf/wire_format.h>
 #include <google/protobuf/stubs/strutil.h>
 
 namespace google {
@@ -43,7 +43,7 @@ namespace protobuf {
 namespace compiler {
 namespace cpp {
 
-using internal::WireFormat;
+using internal::WireFormatLite;
 
 namespace {
 
@@ -57,14 +57,14 @@ int FixedSize(FieldDescriptor::Type type) {
     case FieldDescriptor::TYPE_UINT64  : return -1;
     case FieldDescriptor::TYPE_SINT32  : return -1;
     case FieldDescriptor::TYPE_SINT64  : return -1;
-    case FieldDescriptor::TYPE_FIXED32 : return WireFormat::kFixed32Size;
-    case FieldDescriptor::TYPE_FIXED64 : return WireFormat::kFixed64Size;
-    case FieldDescriptor::TYPE_SFIXED32: return WireFormat::kSFixed32Size;
-    case FieldDescriptor::TYPE_SFIXED64: return WireFormat::kSFixed64Size;
-    case FieldDescriptor::TYPE_FLOAT   : return WireFormat::kFloatSize;
-    case FieldDescriptor::TYPE_DOUBLE  : return WireFormat::kDoubleSize;
+    case FieldDescriptor::TYPE_FIXED32 : return WireFormatLite::kFixed32Size;
+    case FieldDescriptor::TYPE_FIXED64 : return WireFormatLite::kFixed64Size;
+    case FieldDescriptor::TYPE_SFIXED32: return WireFormatLite::kSFixed32Size;
+    case FieldDescriptor::TYPE_SFIXED64: return WireFormatLite::kSFixed64Size;
+    case FieldDescriptor::TYPE_FLOAT   : return WireFormatLite::kFloatSize;
+    case FieldDescriptor::TYPE_DOUBLE  : return WireFormatLite::kDoubleSize;
 
-    case FieldDescriptor::TYPE_BOOL    : return WireFormat::kBoolSize;
+    case FieldDescriptor::TYPE_BOOL    : return WireFormatLite::kBoolSize;
     case FieldDescriptor::TYPE_ENUM    : return -1;
 
     case FieldDescriptor::TYPE_STRING  : return -1;
@@ -79,53 +79,20 @@ int FixedSize(FieldDescriptor::Type type) {
   return -1;
 }
 
-string DefaultValue(const FieldDescriptor* field) {
-  switch (field->cpp_type()) {
-    case FieldDescriptor::CPPTYPE_INT32:
-      return SimpleItoa(field->default_value_int32());
-    case FieldDescriptor::CPPTYPE_UINT32:
-      return SimpleItoa(field->default_value_uint32()) + "u";
-    case FieldDescriptor::CPPTYPE_INT64:
-      return "GOOGLE_LONGLONG(" + SimpleItoa(field->default_value_int64()) + ")";
-    case FieldDescriptor::CPPTYPE_UINT64:
-      return "GOOGLE_ULONGLONG(" + SimpleItoa(field->default_value_uint64())+ ")";
-    case FieldDescriptor::CPPTYPE_DOUBLE:
-      return SimpleDtoa(field->default_value_double());
-    case FieldDescriptor::CPPTYPE_FLOAT:
-      return SimpleFtoa(field->default_value_float());
-    case FieldDescriptor::CPPTYPE_BOOL:
-      return field->default_value_bool() ? "true" : "false";
-
-    case FieldDescriptor::CPPTYPE_ENUM:
-    case FieldDescriptor::CPPTYPE_STRING:
-    case FieldDescriptor::CPPTYPE_MESSAGE:
-      GOOGLE_LOG(FATAL) << "Shouldn't get here.";
-      return "";
-  }
-  // Can't actually get here; make compiler happy.  (We could add a default
-  // case above but then we wouldn't get the nice compiler warning when a
-  // new type is added.)
-  return "";
-}
-
-// TODO(kenton):  Factor out a "SetCommonFieldVariables()" to get rid of
-//   repeat code between this and the other field types.
 void SetPrimitiveVariables(const FieldDescriptor* descriptor,
-                           map<string, string>* variables) {
-  (*variables)["name"] = FieldName(descriptor);
+                           map<string, string>* variables,
+                           const Options& options) {
+  SetCommonFieldVariables(descriptor, variables, options);
   (*variables)["type"] = PrimitiveTypeName(descriptor->cpp_type());
   (*variables)["default"] = DefaultValue(descriptor);
-  (*variables)["index"] = SimpleItoa(descriptor->index());
-  (*variables)["number"] = SimpleItoa(descriptor->number());
-  (*variables)["classname"] = ClassName(FieldScope(descriptor), false);
-  (*variables)["declared_type"] = DeclaredTypeMethodName(descriptor->type());
-  (*variables)["tag_size"] = SimpleItoa(
-    WireFormat::TagSize(descriptor->number(), descriptor->type()));
-
+  (*variables)["tag"] = SimpleItoa(internal::WireFormat::MakeTag(descriptor));
   int fixed_size = FixedSize(descriptor->type());
   if (fixed_size != -1) {
     (*variables)["fixed_size"] = SimpleItoa(fixed_size);
   }
+  (*variables)["wire_format_field_type"] =
+      "::google::protobuf::internal::WireFormatLite::" + FieldDescriptorProto_Type_Name(
+          static_cast<FieldDescriptorProto_Type>(descriptor->type()));
 }
 
 }  // namespace
@@ -133,9 +100,10 @@ void SetPrimitiveVariables(const FieldDescriptor* descriptor,
 // ===================================================================
 
 PrimitiveFieldGenerator::
-PrimitiveFieldGenerator(const FieldDescriptor* descriptor)
+PrimitiveFieldGenerator(const FieldDescriptor* descriptor,
+                        const Options& options)
   : descriptor_(descriptor) {
-  SetPrimitiveVariables(descriptor, &variables_);
+  SetPrimitiveVariables(descriptor, &variables_, options);
 }
 
 PrimitiveFieldGenerator::~PrimitiveFieldGenerator() {}
@@ -148,8 +116,8 @@ GeneratePrivateMembers(io::Printer* printer) const {
 void PrimitiveFieldGenerator::
 GenerateAccessorDeclarations(io::Printer* printer) const {
   printer->Print(variables_,
-    "inline $type$ $name$() const;\n"
-    "inline void set_$name$($type$ value);\n");
+    "inline $type$ $name$() const$deprecation$;\n"
+    "inline void set_$name$($type$ value)$deprecation$;\n");
 }
 
 void PrimitiveFieldGenerator::
@@ -159,7 +127,7 @@ GenerateInlineAccessorDefinitions(io::Printer* printer) const {
     "  return $name$_;\n"
     "}\n"
     "inline void $classname$::set_$name$($type$ value) {\n"
-    "  _set_bit($index$);\n"
+    "  set_has_$name$();\n"
     "  $name$_ = value;\n"
     "}\n");
 }
@@ -180,23 +148,31 @@ GenerateSwappingCode(io::Printer* printer) const {
 }
 
 void PrimitiveFieldGenerator::
-GenerateInitializer(io::Printer* printer) const {
-  printer->Print(variables_, ",\n$name$_($default$)");
+GenerateConstructorCode(io::Printer* printer) const {
+  printer->Print(variables_, "$name$_ = $default$;\n");
 }
 
 void PrimitiveFieldGenerator::
 GenerateMergeFromCodedStream(io::Printer* printer) const {
   printer->Print(variables_,
-    "DO_(::google::protobuf::internal::WireFormat::Read$declared_type$(\n"
-    "      input, &$name$_));\n"
-    "_set_bit($index$);\n");
+    "DO_((::google::protobuf::internal::WireFormatLite::ReadPrimitive<\n"
+    "         $type$, $wire_format_field_type$>(\n"
+    "       input, &$name$_)));\n"
+    "set_has_$name$();\n");
 }
 
 void PrimitiveFieldGenerator::
 GenerateSerializeWithCachedSizes(io::Printer* printer) const {
   printer->Print(variables_,
-    "DO_(::google::protobuf::internal::WireFormat::Write$declared_type$("
-      "$number$, this->$name$(), output));\n");
+    "::google::protobuf::internal::WireFormatLite::Write$declared_type$("
+      "$number$, this->$name$(), output);\n");
+}
+
+void PrimitiveFieldGenerator::
+GenerateSerializeWithCachedSizesToArray(io::Printer* printer) const {
+  printer->Print(variables_,
+    "target = ::google::protobuf::internal::WireFormatLite::Write$declared_type$ToArray("
+      "$number$, this->$name$(), target);\n");
 }
 
 void PrimitiveFieldGenerator::
@@ -205,7 +181,7 @@ GenerateByteSize(io::Printer* printer) const {
   if (fixed_size == -1) {
     printer->Print(variables_,
       "total_size += $tag_size$ +\n"
-      "  ::google::protobuf::internal::WireFormat::$declared_type$Size(\n"
+      "  ::google::protobuf::internal::WireFormatLite::$declared_type$Size(\n"
       "    this->$name$());\n");
   } else {
     printer->Print(variables_,
@@ -216,9 +192,18 @@ GenerateByteSize(io::Printer* printer) const {
 // ===================================================================
 
 RepeatedPrimitiveFieldGenerator::
-RepeatedPrimitiveFieldGenerator(const FieldDescriptor* descriptor)
+RepeatedPrimitiveFieldGenerator(const FieldDescriptor* descriptor,
+                                const Options& options)
   : descriptor_(descriptor) {
-  SetPrimitiveVariables(descriptor, &variables_);
+  SetPrimitiveVariables(descriptor, &variables_, options);
+
+  if (descriptor->options().packed()) {
+    variables_["packed_reader"] = "ReadPackedPrimitive";
+    variables_["repeated_reader"] = "ReadRepeatedPrimitiveNoInline";
+  } else {
+    variables_["packed_reader"] = "ReadPackedPrimitiveNoInline";
+    variables_["repeated_reader"] = "ReadRepeatedPrimitive";
+  }
 }
 
 RepeatedPrimitiveFieldGenerator::~RepeatedPrimitiveFieldGenerator() {}
@@ -227,29 +212,28 @@ void RepeatedPrimitiveFieldGenerator::
 GeneratePrivateMembers(io::Printer* printer) const {
   printer->Print(variables_,
     "::google::protobuf::RepeatedField< $type$ > $name$_;\n");
+  if (descriptor_->options().packed() && HasGeneratedMethods(descriptor_->file())) {
+    printer->Print(variables_,
+      "mutable int _$name$_cached_byte_size_;\n");
+  }
 }
 
 void RepeatedPrimitiveFieldGenerator::
 GenerateAccessorDeclarations(io::Printer* printer) const {
   printer->Print(variables_,
-    "inline const ::google::protobuf::RepeatedField< $type$ >& $name$() const;\n"
-    "inline ::google::protobuf::RepeatedField< $type$ >* mutable_$name$();\n"
-    "inline $type$ $name$(int index) const;\n"
-    "inline void set_$name$(int index, $type$ value);\n"
-    "inline void add_$name$($type$ value);\n");
+    "inline $type$ $name$(int index) const$deprecation$;\n"
+    "inline void set_$name$(int index, $type$ value)$deprecation$;\n"
+    "inline void add_$name$($type$ value)$deprecation$;\n");
+  printer->Print(variables_,
+    "inline const ::google::protobuf::RepeatedField< $type$ >&\n"
+    "    $name$() const$deprecation$;\n"
+    "inline ::google::protobuf::RepeatedField< $type$ >*\n"
+    "    mutable_$name$()$deprecation$;\n");
 }
 
 void RepeatedPrimitiveFieldGenerator::
 GenerateInlineAccessorDefinitions(io::Printer* printer) const {
   printer->Print(variables_,
-    "inline const ::google::protobuf::RepeatedField< $type$ >&\n"
-    "$classname$::$name$() const {\n"
-    "  return $name$_;\n"
-    "}\n"
-    "inline ::google::protobuf::RepeatedField< $type$ >*\n"
-    "$classname$::mutable_$name$() {\n"
-    "  return &$name$_;\n"
-    "}\n"
     "inline $type$ $classname$::$name$(int index) const {\n"
     "  return $name$_.Get(index);\n"
     "}\n"
@@ -258,6 +242,15 @@ GenerateInlineAccessorDefinitions(io::Printer* printer) const {
     "}\n"
     "inline void $classname$::add_$name$($type$ value) {\n"
     "  $name$_.Add(value);\n"
+    "}\n");
+  printer->Print(variables_,
+    "inline const ::google::protobuf::RepeatedField< $type$ >&\n"
+    "$classname$::$name$() const {\n"
+    "  return $name$_;\n"
+    "}\n"
+    "inline ::google::protobuf::RepeatedField< $type$ >*\n"
+    "$classname$::mutable_$name$() {\n"
+    "  return &$name$_;\n"
     "}\n");
 }
 
@@ -277,39 +270,115 @@ GenerateSwappingCode(io::Printer* printer) const {
 }
 
 void RepeatedPrimitiveFieldGenerator::
-GenerateInitializer(io::Printer* printer) const {
+GenerateConstructorCode(io::Printer* printer) const {
   // Not needed for repeated fields.
 }
 
 void RepeatedPrimitiveFieldGenerator::
 GenerateMergeFromCodedStream(io::Printer* printer) const {
   printer->Print(variables_,
-    "$type$ value;\n"
-    "DO_(::google::protobuf::internal::WireFormat::Read$declared_type$(input, &value));\n"
-    "add_$name$(value);\n");
+    "DO_((::google::protobuf::internal::WireFormatLite::$repeated_reader$<\n"
+    "         $type$, $wire_format_field_type$>(\n"
+    "       $tag_size$, $tag$, input, this->mutable_$name$())));\n");
+}
+
+void RepeatedPrimitiveFieldGenerator::
+GenerateMergeFromCodedStreamWithPacking(io::Printer* printer) const {
+  printer->Print(variables_,
+    "DO_((::google::protobuf::internal::WireFormatLite::$packed_reader$<\n"
+    "         $type$, $wire_format_field_type$>(\n"
+    "       input, this->mutable_$name$())));\n");
 }
 
 void RepeatedPrimitiveFieldGenerator::
 GenerateSerializeWithCachedSizes(io::Printer* printer) const {
+  if (descriptor_->options().packed()) {
+    // Write the tag and the size.
+    printer->Print(variables_,
+      "if (this->$name$_size() > 0) {\n"
+      "  ::google::protobuf::internal::WireFormatLite::WriteTag("
+          "$number$, "
+          "::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED, "
+          "output);\n"
+      "  output->WriteVarint32(_$name$_cached_byte_size_);\n"
+      "}\n");
+  }
   printer->Print(variables_,
-    "DO_(::google::protobuf::internal::WireFormat::Write$declared_type$("
-      "$number$, this->$name$(i), output));\n");
+      "for (int i = 0; i < this->$name$_size(); i++) {\n");
+  if (descriptor_->options().packed()) {
+    printer->Print(variables_,
+      "  ::google::protobuf::internal::WireFormatLite::Write$declared_type$NoTag(\n"
+      "    this->$name$(i), output);\n");
+  } else {
+    printer->Print(variables_,
+      "  ::google::protobuf::internal::WireFormatLite::Write$declared_type$(\n"
+      "    $number$, this->$name$(i), output);\n");
+  }
+  printer->Print("}\n");
+}
+
+void RepeatedPrimitiveFieldGenerator::
+GenerateSerializeWithCachedSizesToArray(io::Printer* printer) const {
+  if (descriptor_->options().packed()) {
+    // Write the tag and the size.
+    printer->Print(variables_,
+      "if (this->$name$_size() > 0) {\n"
+      "  target = ::google::protobuf::internal::WireFormatLite::WriteTagToArray(\n"
+      "    $number$,\n"
+      "    ::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED,\n"
+      "    target);\n"
+      "  target = ::google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(\n"
+      "    _$name$_cached_byte_size_, target);\n"
+      "}\n");
+  }
+  printer->Print(variables_,
+      "for (int i = 0; i < this->$name$_size(); i++) {\n");
+  if (descriptor_->options().packed()) {
+    printer->Print(variables_,
+      "  target = ::google::protobuf::internal::WireFormatLite::\n"
+      "    Write$declared_type$NoTagToArray(this->$name$(i), target);\n");
+  } else {
+    printer->Print(variables_,
+      "  target = ::google::protobuf::internal::WireFormatLite::\n"
+      "    Write$declared_type$ToArray($number$, this->$name$(i), target);\n");
+  }
+  printer->Print("}\n");
 }
 
 void RepeatedPrimitiveFieldGenerator::
 GenerateByteSize(io::Printer* printer) const {
+  printer->Print(variables_,
+    "{\n"
+    "  int data_size = 0;\n");
+  printer->Indent();
   int fixed_size = FixedSize(descriptor_->type());
   if (fixed_size == -1) {
     printer->Print(variables_,
-      "total_size += $tag_size$ * $name$_size();\n"
-      "for (int i = 0; i < $name$_size(); i++) {\n"
-      "  total_size += ::google::protobuf::internal::WireFormat::$declared_type$Size(\n"
-      "    this->$name$(i));\n"
+      "for (int i = 0; i < this->$name$_size(); i++) {\n"
+      "  data_size += ::google::protobuf::internal::WireFormatLite::\n"
+      "    $declared_type$Size(this->$name$(i));\n"
       "}\n");
   } else {
     printer->Print(variables_,
-      "total_size += ($tag_size$ + $fixed_size$) * $name$_size();\n");
+      "data_size = $fixed_size$ * this->$name$_size();\n");
   }
+
+  if (descriptor_->options().packed()) {
+    printer->Print(variables_,
+      "if (data_size > 0) {\n"
+      "  total_size += $tag_size$ +\n"
+      "    ::google::protobuf::internal::WireFormatLite::Int32Size(data_size);\n"
+      "}\n"
+      "GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();\n"
+      "_$name$_cached_byte_size_ = data_size;\n"
+      "GOOGLE_SAFE_CONCURRENT_WRITES_END();\n"
+      "total_size += data_size;\n");
+  } else {
+    printer->Print(variables_,
+      "total_size += $tag_size$ * this->$name$_size() + data_size;\n");
+  }
+  printer->Outdent();
+  printer->Print("}\n");
 }
 
 }  // namespace cpp

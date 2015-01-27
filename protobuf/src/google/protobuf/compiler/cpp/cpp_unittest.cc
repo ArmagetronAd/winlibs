@@ -44,14 +44,19 @@
 // correctly and produces the interfaces we expect, which is why this test
 // is written this way.
 
+#include <google/protobuf/compiler/cpp/cpp_unittest.h>
+
 #include <vector>
 
 #include <google/protobuf/unittest.pb.h>
 #include <google/protobuf/unittest_optimize_for.pb.h>
 #include <google/protobuf/unittest_embed_optimize_for.pb.h>
+#include <google/protobuf/unittest_no_generic_services.pb.h>
 #include <google/protobuf/test_util.h>
 #include <google/protobuf/compiler/cpp/cpp_test_bad_identifiers.pb.h>
 #include <google/protobuf/compiler/importer.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/dynamic_message.h>
@@ -61,6 +66,7 @@
 #include <google/protobuf/stubs/substitute.h>
 #include <google/protobuf/testing/googletest.h>
 #include <gtest/gtest.h>
+#include <google/protobuf/stubs/stl_util.h>
 
 namespace google {
 namespace protobuf {
@@ -69,6 +75,8 @@ namespace cpp {
 
 // Can't use an anonymous namespace here due to brokenness of Tru64 compiler.
 namespace cpp_unittest {
+
+namespace protobuf_unittest = ::protobuf_unittest;
 
 
 class MockErrorCollector : public MultiFileErrorCollector {
@@ -85,6 +93,8 @@ class MockErrorCollector : public MultiFileErrorCollector {
                                  filename, line, column, message);
   }
 };
+
+#ifndef PROTOBUF_TEST_NO_DESCRIPTORS
 
 // Test that generated code has proper descriptors:
 // Parse a descriptor directly (using google::protobuf::compiler::Importer) and
@@ -115,6 +125,8 @@ TEST(GeneratedDescriptorTest, IdenticalDescriptors) {
             generated_decsriptor_proto.DebugString());
 }
 
+#endif  // !PROTOBUF_TEST_NO_DESCRIPTORS
+
 // ===================================================================
 
 TEST(GeneratedMessageTest, Defaults) {
@@ -134,6 +146,45 @@ TEST(GeneratedMessageTest, Defaults) {
             &message.optional_foreign_message());
   EXPECT_EQ(&unittest_import::ImportMessage::default_instance(),
             &message.optional_import_message());
+}
+
+TEST(GeneratedMessageTest, FloatingPointDefaults) {
+  const unittest::TestExtremeDefaultValues& extreme_default =
+      unittest::TestExtremeDefaultValues::default_instance();
+
+  EXPECT_EQ(0.0f, extreme_default.zero_float());
+  EXPECT_EQ(1.0f, extreme_default.one_float());
+  EXPECT_EQ(1.5f, extreme_default.small_float());
+  EXPECT_EQ(-1.0f, extreme_default.negative_one_float());
+  EXPECT_EQ(-1.5f, extreme_default.negative_float());
+  EXPECT_EQ(2.0e8f, extreme_default.large_float());
+  EXPECT_EQ(-8e-28f, extreme_default.small_negative_float());
+  EXPECT_EQ(numeric_limits<double>::infinity(),
+            extreme_default.inf_double());
+  EXPECT_EQ(-numeric_limits<double>::infinity(),
+            extreme_default.neg_inf_double());
+  EXPECT_TRUE(extreme_default.nan_double() != extreme_default.nan_double());
+  EXPECT_EQ(numeric_limits<float>::infinity(),
+            extreme_default.inf_float());
+  EXPECT_EQ(-numeric_limits<float>::infinity(),
+            extreme_default.neg_inf_float());
+  EXPECT_TRUE(extreme_default.nan_float() != extreme_default.nan_float());
+}
+
+TEST(GeneratedMessageTest, Trigraph) {
+  const unittest::TestExtremeDefaultValues& extreme_default =
+      unittest::TestExtremeDefaultValues::default_instance();
+
+  EXPECT_EQ("? ? ?? ?? ??? ?\?/ ?\?-", extreme_default.cpp_trigraph());
+}
+
+TEST(GeneratedMessageTest, ExtremeSmallIntegerDefault) {
+  const unittest::TestExtremeDefaultValues& extreme_default =
+      unittest::TestExtremeDefaultValues::default_instance();
+  EXPECT_EQ(-0x80000000, kint32min);
+  EXPECT_EQ(GOOGLE_LONGLONG(-0x8000000000000000), kint64min);
+  EXPECT_EQ(kint32min, extreme_default.really_small_int32());
+  EXPECT_EQ(kint64min, extreme_default.really_small_int64());
 }
 
 TEST(GeneratedMessageTest, Accessors) {
@@ -162,6 +213,98 @@ TEST(GeneratedMessageTest, MutableStringDefault) {
   message.Clear();
 
   EXPECT_EQ("hello", *message.mutable_default_string());
+}
+
+TEST(GeneratedMessageTest, StringDefaults) {
+  unittest::TestExtremeDefaultValues message;
+  // Check if '\000' can be used in default string value.
+  EXPECT_EQ(string("hel\000lo", 6), message.string_with_zero());
+  EXPECT_EQ(string("wor\000ld", 6), message.bytes_with_zero());
+}
+
+TEST(GeneratedMessageTest, ReleaseString) {
+  // Check that release_foo() starts out NULL, and gives us a value
+  // that we can delete after it's been set.
+  unittest::TestAllTypes message;
+
+  EXPECT_EQ(NULL, message.release_default_string());
+  EXPECT_FALSE(message.has_default_string());
+  EXPECT_EQ("hello", message.default_string());
+
+  message.set_default_string("blah");
+  EXPECT_TRUE(message.has_default_string());
+  string* str = message.release_default_string();
+  EXPECT_FALSE(message.has_default_string());
+  ASSERT_TRUE(str != NULL);
+  EXPECT_EQ("blah", *str);
+  delete str;
+
+  EXPECT_EQ(NULL, message.release_default_string());
+  EXPECT_FALSE(message.has_default_string());
+  EXPECT_EQ("hello", message.default_string());
+}
+
+TEST(GeneratedMessageTest, ReleaseMessage) {
+  // Check that release_foo() starts out NULL, and gives us a value
+  // that we can delete after it's been set.
+  unittest::TestAllTypes message;
+
+  EXPECT_EQ(NULL, message.release_optional_nested_message());
+  EXPECT_FALSE(message.has_optional_nested_message());
+
+  message.mutable_optional_nested_message()->set_bb(1);
+  unittest::TestAllTypes::NestedMessage* nest =
+      message.release_optional_nested_message();
+  EXPECT_FALSE(message.has_optional_nested_message());
+  ASSERT_TRUE(nest != NULL);
+  EXPECT_EQ(1, nest->bb());
+  delete nest;
+
+  EXPECT_EQ(NULL, message.release_optional_nested_message());
+  EXPECT_FALSE(message.has_optional_nested_message());
+}
+
+TEST(GeneratedMessageTest, SetAllocatedString) {
+  // Check that set_allocated_foo() works for strings.
+  unittest::TestAllTypes message;
+
+  EXPECT_FALSE(message.has_optional_string());
+  const string kHello("hello");
+  message.set_optional_string(kHello);
+  EXPECT_TRUE(message.has_optional_string());
+
+  message.set_allocated_optional_string(NULL);
+  EXPECT_FALSE(message.has_optional_string());
+  EXPECT_EQ("", message.optional_string());
+
+  message.set_allocated_optional_string(new string(kHello));
+  EXPECT_TRUE(message.has_optional_string());
+  EXPECT_EQ(kHello, message.optional_string());
+}
+
+TEST(GeneratedMessageTest, SetAllocatedMessage) {
+  // Check that set_allocated_foo() can be called in all cases.
+  unittest::TestAllTypes message;
+
+  EXPECT_FALSE(message.has_optional_nested_message());
+
+  message.mutable_optional_nested_message()->set_bb(1);
+  EXPECT_TRUE(message.has_optional_nested_message());
+
+  message.set_allocated_optional_nested_message(NULL);
+  EXPECT_FALSE(message.has_optional_nested_message());
+  EXPECT_EQ(&unittest::TestAllTypes::NestedMessage::default_instance(),
+            &message.optional_nested_message());
+
+  message.mutable_optional_nested_message()->set_bb(1);
+  unittest::TestAllTypes::NestedMessage* nest =
+      message.release_optional_nested_message();
+  ASSERT_TRUE(nest != NULL);
+  EXPECT_FALSE(message.has_optional_nested_message());
+
+  message.set_allocated_optional_nested_message(nest);
+  EXPECT_TRUE(message.has_optional_nested_message());
+  EXPECT_EQ(1, message.optional_nested_message().bb());
 }
 
 TEST(GeneratedMessageTest, Clear) {
@@ -222,10 +365,24 @@ TEST(GeneratedMessageTest, ClearOneField) {
   TestUtil::ExpectAllFieldsSet(message);
 }
 
+TEST(GeneratedMessageTest, StringCharStarLength) {
+  // Verify that we can use a char*,length to set one of the string fields.
+  unittest::TestAllTypes message;
+  message.set_optional_string("abcdef", 3);
+  EXPECT_EQ("abc", message.optional_string());
+
+  // Verify that we can use a char*,length to add to a repeated string field.
+  message.add_repeated_string("abcdef", 3);
+  EXPECT_EQ(1, message.repeated_string_size());
+  EXPECT_EQ("abc", message.repeated_string(0));
+
+  // Verify that we can use a char*,length to set a repeated string field.
+  message.set_repeated_string(0, "wxyz", 2);
+  EXPECT_EQ("wx", message.repeated_string(0));
+}
 
 TEST(GeneratedMessageTest, CopyFrom) {
   unittest::TestAllTypes message1, message2;
-  string data;
 
   TestUtil::SetAllFields(&message1);
   message2.CopyFrom(message1);
@@ -330,10 +487,12 @@ TEST(GeneratedMessageTest, CopyAssignmentOperator) {
   TestUtil::ExpectAllFieldsSet(message2);
 
   // Make sure that self-assignment does something sane.
-  message2 = message2;
+  message2.operator=(message2);
   TestUtil::ExpectAllFieldsSet(message2);
 }
 
+#if !defined(PROTOBUF_TEST_NO_DESCRIPTORS) || \
+    !defined(GOOGLE_PROTOBUF_NO_RTTI)
 TEST(GeneratedMessageTest, UpcastCopyFrom) {
   // Test the CopyFrom method that takes in the generic const Message&
   // parameter.
@@ -346,6 +505,9 @@ TEST(GeneratedMessageTest, UpcastCopyFrom) {
 
   TestUtil::ExpectAllFieldsSet(message2);
 }
+#endif
+
+#ifndef PROTOBUF_TEST_NO_DESCRIPTORS
 
 TEST(GeneratedMessageTest, DynamicMessageCopyFrom) {
   // Test copying from a DynamicMessage, which must fall back to using
@@ -366,6 +528,8 @@ TEST(GeneratedMessageTest, DynamicMessageCopyFrom) {
 
   TestUtil::ExpectAllFieldsSet(message2);
 }
+
+#endif  // !PROTOBUF_TEST_NO_DESCRIPTORS
 
 TEST(GeneratedMessageTest, NonEmptyMergeFrom) {
   // Test merging with a non-empty message. Code is a modified form
@@ -393,7 +557,9 @@ TEST(GeneratedMessageTest, NonEmptyMergeFrom) {
   TestUtil::ExpectAllFieldsSet(message1);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if !defined(PROTOBUF_TEST_NO_DESCRIPTORS) || \
+    !defined(GOOGLE_PROTOBUF_NO_RTTI)
+#ifdef PROTOBUF_HAS_DEATH_TEST
 
 TEST(GeneratedMessageTest, MergeFromSelf) {
   unittest::TestAllTypes message;
@@ -402,17 +568,74 @@ TEST(GeneratedMessageTest, MergeFromSelf) {
                "&from");
 }
 
-#endif  // GTEST_HAS_DEATH_TEST
+#endif  // PROTOBUF_HAS_DEATH_TEST
+#endif  // !PROTOBUF_TEST_NO_DESCRIPTORS || !GOOGLE_PROTOBUF_NO_RTTI
 
-TEST(GeneratedMessageTest, Serialization) {
+// Test the generated SerializeWithCachedSizesToArray(),
+TEST(GeneratedMessageTest, SerializationToArray) {
   unittest::TestAllTypes message1, message2;
   string data;
-
   TestUtil::SetAllFields(&message1);
-  message1.SerializeToString(&data);
+  int size = message1.ByteSize();
+  data.resize(size);
+  uint8* start = reinterpret_cast<uint8*>(string_as_array(&data));
+  uint8* end = message1.SerializeWithCachedSizesToArray(start);
+  EXPECT_EQ(size, end - start);
   EXPECT_TRUE(message2.ParseFromString(data));
   TestUtil::ExpectAllFieldsSet(message2);
 
+}
+
+TEST(GeneratedMessageTest, PackedFieldsSerializationToArray) {
+  unittest::TestPackedTypes packed_message1, packed_message2;
+  string packed_data;
+  TestUtil::SetPackedFields(&packed_message1);
+  int packed_size = packed_message1.ByteSize();
+  packed_data.resize(packed_size);
+  uint8* start = reinterpret_cast<uint8*>(string_as_array(&packed_data));
+  uint8* end = packed_message1.SerializeWithCachedSizesToArray(start);
+  EXPECT_EQ(packed_size, end - start);
+  EXPECT_TRUE(packed_message2.ParseFromString(packed_data));
+  TestUtil::ExpectPackedFieldsSet(packed_message2);
+}
+
+// Test the generated SerializeWithCachedSizes() by forcing the buffer to write
+// one byte at a time.
+TEST(GeneratedMessageTest, SerializationToStream) {
+  unittest::TestAllTypes message1, message2;
+  TestUtil::SetAllFields(&message1);
+  int size = message1.ByteSize();
+  string data;
+  data.resize(size);
+  {
+    // Allow the output stream to buffer only one byte at a time.
+    io::ArrayOutputStream array_stream(string_as_array(&data), size, 1);
+    io::CodedOutputStream output_stream(&array_stream);
+    message1.SerializeWithCachedSizes(&output_stream);
+    EXPECT_FALSE(output_stream.HadError());
+    EXPECT_EQ(size, output_stream.ByteCount());
+  }
+  EXPECT_TRUE(message2.ParseFromString(data));
+  TestUtil::ExpectAllFieldsSet(message2);
+
+}
+
+TEST(GeneratedMessageTest, PackedFieldsSerializationToStream) {
+  unittest::TestPackedTypes message1, message2;
+  TestUtil::SetPackedFields(&message1);
+  int size = message1.ByteSize();
+  string data;
+  data.resize(size);
+  {
+    // Allow the output stream to buffer only one byte at a time.
+    io::ArrayOutputStream array_stream(string_as_array(&data), size, 1);
+    io::CodedOutputStream output_stream(&array_stream);
+    message1.SerializeWithCachedSizes(&output_stream);
+    EXPECT_FALSE(output_stream.HadError());
+    EXPECT_EQ(size, output_stream.ByteCount());
+  }
+  EXPECT_TRUE(message2.ParseFromString(data));
+  TestUtil::ExpectPackedFieldsSet(message2);
 }
 
 
@@ -539,7 +762,16 @@ TEST(GeneratedMessageTest, TestConflictingSymbolNames) {
 
   message.set_friend_(5);
   EXPECT_EQ(5, message.friend_());
+
+  // Instantiate extension template functions to test conflicting template
+  // parameter names.
+  typedef protobuf_unittest::TestConflictingSymbolNamesExtension ExtensionMessage;
+  message.AddExtension(ExtensionMessage::repeated_int32_ext, 123);
+  EXPECT_EQ(123,
+            message.GetExtension(ExtensionMessage::repeated_int32_ext, 0));
 }
+
+#ifndef PROTOBUF_TEST_NO_DESCRIPTORS
 
 TEST(GeneratedMessageTest, TestOptimizedForSize) {
   // We rely on the tests in reflection_ops_unittest and wire_format_unittest
@@ -608,6 +840,35 @@ TEST(GeneratedMessageTest, TestSpaceUsed) {
             message1.SpaceUsed());
 }
 
+#endif  // !PROTOBUF_TEST_NO_DESCRIPTORS
+
+
+TEST(GeneratedMessageTest, FieldConstantValues) {
+  unittest::TestRequired message;
+  EXPECT_EQ(unittest::TestAllTypes_NestedMessage::kBbFieldNumber, 1);
+  EXPECT_EQ(unittest::TestAllTypes::kOptionalInt32FieldNumber, 1);
+  EXPECT_EQ(unittest::TestAllTypes::kOptionalgroupFieldNumber, 16);
+  EXPECT_EQ(unittest::TestAllTypes::kOptionalNestedMessageFieldNumber, 18);
+  EXPECT_EQ(unittest::TestAllTypes::kOptionalNestedEnumFieldNumber, 21);
+  EXPECT_EQ(unittest::TestAllTypes::kRepeatedInt32FieldNumber, 31);
+  EXPECT_EQ(unittest::TestAllTypes::kRepeatedgroupFieldNumber, 46);
+  EXPECT_EQ(unittest::TestAllTypes::kRepeatedNestedMessageFieldNumber, 48);
+  EXPECT_EQ(unittest::TestAllTypes::kRepeatedNestedEnumFieldNumber, 51);
+}
+
+TEST(GeneratedMessageTest, ExtensionConstantValues) {
+  EXPECT_EQ(unittest::TestRequired::kSingleFieldNumber, 1000);
+  EXPECT_EQ(unittest::TestRequired::kMultiFieldNumber, 1001);
+  EXPECT_EQ(unittest::kOptionalInt32ExtensionFieldNumber, 1);
+  EXPECT_EQ(unittest::kOptionalgroupExtensionFieldNumber, 16);
+  EXPECT_EQ(unittest::kOptionalNestedMessageExtensionFieldNumber, 18);
+  EXPECT_EQ(unittest::kOptionalNestedEnumExtensionFieldNumber, 21);
+  EXPECT_EQ(unittest::kRepeatedInt32ExtensionFieldNumber, 31);
+  EXPECT_EQ(unittest::kRepeatedgroupExtensionFieldNumber, 46);
+  EXPECT_EQ(unittest::kRepeatedNestedMessageExtensionFieldNumber, 48);
+  EXPECT_EQ(unittest::kRepeatedNestedEnumExtensionFieldNumber, 51);
+}
+
 // ===================================================================
 
 TEST(GeneratedEnumTest, EnumValuesAsSwitchCases) {
@@ -654,20 +915,36 @@ TEST(GeneratedEnumTest, IsValidValue) {
 }
 
 TEST(GeneratedEnumTest, MinAndMax) {
-  EXPECT_EQ(unittest::TestAllTypes::FOO,unittest::TestAllTypes::NestedEnum_MIN);
-  EXPECT_EQ(unittest::TestAllTypes::BAZ,unittest::TestAllTypes::NestedEnum_MAX);
+  EXPECT_EQ(unittest::TestAllTypes::FOO,
+            unittest::TestAllTypes::NestedEnum_MIN);
+  EXPECT_EQ(unittest::TestAllTypes::BAZ,
+            unittest::TestAllTypes::NestedEnum_MAX);
+  EXPECT_EQ(4, unittest::TestAllTypes::NestedEnum_ARRAYSIZE);
 
   EXPECT_EQ(unittest::FOREIGN_FOO, unittest::ForeignEnum_MIN);
   EXPECT_EQ(unittest::FOREIGN_BAZ, unittest::ForeignEnum_MAX);
+  EXPECT_EQ(7, unittest::ForeignEnum_ARRAYSIZE);
 
   EXPECT_EQ(1, unittest::TestEnumWithDupValue_MIN);
   EXPECT_EQ(3, unittest::TestEnumWithDupValue_MAX);
+  EXPECT_EQ(4, unittest::TestEnumWithDupValue_ARRAYSIZE);
 
   EXPECT_EQ(unittest::SPARSE_E, unittest::TestSparseEnum_MIN);
   EXPECT_EQ(unittest::SPARSE_C, unittest::TestSparseEnum_MAX);
+  EXPECT_EQ(12589235, unittest::TestSparseEnum_ARRAYSIZE);
+
+  // Make sure we can take the address of _MIN, _MAX and _ARRAYSIZE.
+  void* null_pointer = 0;  // NULL may be integer-type, not pointer-type.
+  EXPECT_NE(null_pointer, &unittest::TestAllTypes::NestedEnum_MIN);
+  EXPECT_NE(null_pointer, &unittest::TestAllTypes::NestedEnum_MAX);
+  EXPECT_NE(null_pointer, &unittest::TestAllTypes::NestedEnum_ARRAYSIZE);
+
+  EXPECT_NE(null_pointer, &unittest::ForeignEnum_MIN);
+  EXPECT_NE(null_pointer, &unittest::ForeignEnum_MAX);
+  EXPECT_NE(null_pointer, &unittest::ForeignEnum_ARRAYSIZE);
 
   // Make sure we can use _MIN and _MAX as switch cases.
-  switch(unittest::SPARSE_A) {
+  switch (unittest::SPARSE_A) {
     case unittest::TestSparseEnum_MIN:
     case unittest::TestSparseEnum_MAX:
       break;
@@ -676,7 +953,47 @@ TEST(GeneratedEnumTest, MinAndMax) {
   }
 }
 
+#ifndef PROTOBUF_TEST_NO_DESCRIPTORS
+
+TEST(GeneratedEnumTest, Name) {
+  // "Names" in the presence of dup values are a bit arbitrary.
+  EXPECT_EQ("FOO1", unittest::TestEnumWithDupValue_Name(unittest::FOO1));
+  EXPECT_EQ("FOO1", unittest::TestEnumWithDupValue_Name(unittest::FOO2));
+
+  EXPECT_EQ("SPARSE_A", unittest::TestSparseEnum_Name(unittest::SPARSE_A));
+  EXPECT_EQ("SPARSE_B", unittest::TestSparseEnum_Name(unittest::SPARSE_B));
+  EXPECT_EQ("SPARSE_C", unittest::TestSparseEnum_Name(unittest::SPARSE_C));
+  EXPECT_EQ("SPARSE_D", unittest::TestSparseEnum_Name(unittest::SPARSE_D));
+  EXPECT_EQ("SPARSE_E", unittest::TestSparseEnum_Name(unittest::SPARSE_E));
+  EXPECT_EQ("SPARSE_F", unittest::TestSparseEnum_Name(unittest::SPARSE_F));
+  EXPECT_EQ("SPARSE_G", unittest::TestSparseEnum_Name(unittest::SPARSE_G));
+}
+
+TEST(GeneratedEnumTest, Parse) {
+  unittest::TestEnumWithDupValue dup_value = unittest::FOO1;
+  EXPECT_TRUE(unittest::TestEnumWithDupValue_Parse("FOO1", &dup_value));
+  EXPECT_EQ(unittest::FOO1, dup_value);
+  EXPECT_TRUE(unittest::TestEnumWithDupValue_Parse("FOO2", &dup_value));
+  EXPECT_EQ(unittest::FOO2, dup_value);
+  EXPECT_FALSE(unittest::TestEnumWithDupValue_Parse("FOO", &dup_value));
+}
+
+TEST(GeneratedEnumTest, GetEnumDescriptor) {
+  EXPECT_EQ(unittest::TestAllTypes::NestedEnum_descriptor(),
+            GetEnumDescriptor<unittest::TestAllTypes::NestedEnum>());
+  EXPECT_EQ(unittest::ForeignEnum_descriptor(),
+            GetEnumDescriptor<unittest::ForeignEnum>());
+  EXPECT_EQ(unittest::TestEnumWithDupValue_descriptor(),
+            GetEnumDescriptor<unittest::TestEnumWithDupValue>());
+  EXPECT_EQ(unittest::TestSparseEnum_descriptor(),
+            GetEnumDescriptor<unittest::TestSparseEnum>());
+}
+
+#endif  // PROTOBUF_TEST_NO_DESCRIPTORS
+
 // ===================================================================
+
+#ifndef PROTOBUF_TEST_NO_DESCRIPTORS
 
 // Support code for testing services.
 class GeneratedServiceTest : public testing::Test {
@@ -886,7 +1203,7 @@ TEST_F(GeneratedServiceTest, CallMethod) {
 TEST_F(GeneratedServiceTest, CallMethodTypeFailure) {
   // Verify death if we call Foo() with Bar's message types.
 
-#ifdef GTEST_HAS_DEATH_TEST  // death tests do not work on Windows yet
+#ifdef PROTOBUF_HAS_DEATH_TEST  // death tests do not work on Windows yet
   EXPECT_DEBUG_DEATH(
     mock_service_.CallMethod(foo_, &mock_controller_,
                              &foo_request_, &bar_response_, done_.get()),
@@ -897,7 +1214,7 @@ TEST_F(GeneratedServiceTest, CallMethodTypeFailure) {
     mock_service_.CallMethod(foo_, &mock_controller_,
                              &bar_request_, &foo_response_, done_.get()),
     "dynamic_cast");
-#endif  // GTEST_HAS_DEATH_TEST
+#endif  // PROTOBUF_HAS_DEATH_TEST
 }
 
 TEST_F(GeneratedServiceTest, GetPrototypes) {
@@ -969,6 +1286,64 @@ TEST_F(GeneratedServiceTest, NotImplemented) {
                             done_.get());
 
   EXPECT_TRUE(controller.called_);
+}
+
+}  // namespace cpp_unittest
+}  // namespace cpp
+}  // namespace compiler
+
+namespace no_generic_services_test {
+  // Verify that no class called "TestService" was defined in
+  // unittest_no_generic_services.pb.h by defining a different type by the same
+  // name.  If such a service was generated, this will not compile.
+  struct TestService {
+    int i;
+  };
+}
+
+namespace compiler {
+namespace cpp {
+namespace cpp_unittest {
+
+TEST_F(GeneratedServiceTest, NoGenericServices) {
+  // Verify that non-services in unittest_no_generic_services.proto were
+  // generated.
+  no_generic_services_test::TestMessage message;
+  message.set_a(1);
+  message.SetExtension(no_generic_services_test::test_extension, 123);
+  no_generic_services_test::TestEnum e = no_generic_services_test::FOO;
+  EXPECT_EQ(e, 1);
+
+  // Verify that a ServiceDescriptor is generated for the service even if the
+  // class itself is not.
+  const FileDescriptor* file =
+      no_generic_services_test::TestMessage::descriptor()->file();
+
+  ASSERT_EQ(1, file->service_count());
+  EXPECT_EQ("TestService", file->service(0)->name());
+  ASSERT_EQ(1, file->service(0)->method_count());
+  EXPECT_EQ("Foo", file->service(0)->method(0)->name());
+}
+
+#endif  // !PROTOBUF_TEST_NO_DESCRIPTORS
+
+// ===================================================================
+
+// This test must run last.  It verifies that descriptors were or were not
+// initialized depending on whether PROTOBUF_TEST_NO_DESCRIPTORS was defined.
+// When this is defined, we skip all tests which are expected to trigger
+// descriptor initialization.  This verifies that everything else still works
+// if descriptors are not initialized.
+TEST(DescriptorInitializationTest, Initialized) {
+#ifdef PROTOBUF_TEST_NO_DESCRIPTORS
+  bool should_have_descriptors = false;
+#else
+  bool should_have_descriptors = true;
+#endif
+
+  EXPECT_EQ(should_have_descriptors,
+    DescriptorPool::generated_pool()->InternalIsFileLoaded(
+      "google/protobuf/unittest.proto"));
 }
 
 }  // namespace cpp_unittest

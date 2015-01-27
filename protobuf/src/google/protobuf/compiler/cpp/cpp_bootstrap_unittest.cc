@@ -48,8 +48,8 @@
 #include <google/protobuf/compiler/importer.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
-#include <google/protobuf/stubs/stl_util-inl.h>
 #include <google/protobuf/stubs/map-util.h>
+#include <google/protobuf/stubs/stl_util.h>
 #include <google/protobuf/stubs/strutil.h>
 #include <google/protobuf/stubs/substitute.h>
 
@@ -79,10 +79,10 @@ class MockErrorCollector : public MultiFileErrorCollector {
   }
 };
 
-class MockOutputDirectory : public OutputDirectory {
+class MockGeneratorContext : public GeneratorContext {
  public:
-  MockOutputDirectory() {}
-  ~MockOutputDirectory() {
+  MockGeneratorContext() {}
+  ~MockGeneratorContext() {
     STLDeleteValues(&files_);
   }
 
@@ -102,7 +102,7 @@ class MockOutputDirectory : public OutputDirectory {
          "to your CL.";
   }
 
-  // implements OutputDirectory --------------------------------------
+  // implements GeneratorContext --------------------------------------
 
   virtual io::ZeroCopyOutputStream* Open(const string& filename) {
     string** map_slot = &files_[filename];
@@ -123,21 +123,31 @@ TEST(BootstrapTest, GeneratedDescriptorMatches) {
   Importer importer(&source_tree, &error_collector);
   const FileDescriptor* proto_file =
     importer.Import("google/protobuf/descriptor.proto");
+  const FileDescriptor* plugin_proto_file =
+    importer.Import("google/protobuf/compiler/plugin.proto");
   EXPECT_EQ("", error_collector.text_);
   ASSERT_TRUE(proto_file != NULL);
+  ASSERT_TRUE(plugin_proto_file != NULL);
 
   CppGenerator generator;
-  MockOutputDirectory output_directory;
+  MockGeneratorContext context;
   string error;
   string parameter;
   parameter = "dllexport_decl=LIBPROTOBUF_EXPORT";
   ASSERT_TRUE(generator.Generate(proto_file, parameter,
-                                 &output_directory, &error));
+                                 &context, &error));
+  parameter = "dllexport_decl=LIBPROTOC_EXPORT";
+  ASSERT_TRUE(generator.Generate(plugin_proto_file, parameter,
+                                 &context, &error));
 
-  output_directory.ExpectFileMatches("google/protobuf/descriptor.pb.h",
-                                     "google/protobuf/descriptor.pb.h");
-  output_directory.ExpectFileMatches("google/protobuf/descriptor.pb.cc",
-                                     "google/protobuf/descriptor.pb.cc");
+  context.ExpectFileMatches("google/protobuf/descriptor.pb.h",
+                            "google/protobuf/descriptor.pb.h");
+  context.ExpectFileMatches("google/protobuf/descriptor.pb.cc",
+                            "google/protobuf/descriptor.pb.cc");
+  context.ExpectFileMatches("google/protobuf/compiler/plugin.pb.h",
+                            "google/protobuf/compiler/plugin.pb.h");
+  context.ExpectFileMatches("google/protobuf/compiler/plugin.pb.cc",
+                            "google/protobuf/compiler/plugin.pb.cc");
 }
 
 }  // namespace
@@ -145,5 +155,4 @@ TEST(BootstrapTest, GeneratedDescriptorMatches) {
 }  // namespace cpp
 }  // namespace compiler
 }  // namespace protobuf
-
 }  // namespace google

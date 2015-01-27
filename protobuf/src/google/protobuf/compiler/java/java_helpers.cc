@@ -32,11 +32,13 @@
 //  Based on original Protocol Buffers design by
 //  Sanjay Ghemawat, Jeff Dean, and others.
 
+#include <limits>
 #include <vector>
 
 #include <google/protobuf/compiler/java/java_helpers.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/stubs/strutil.h>
+#include <google/protobuf/stubs/substitute.h>
 
 namespace google {
 namespace protobuf {
@@ -56,7 +58,7 @@ const string& FieldName(const FieldDescriptor* field) {
   // Groups are hacky:  The name of the field is just the lower-cased name
   // of the group type.  In Java, though, we would like to retain the original
   // capitalization of the type name.
-  if (field->type() == FieldDescriptor::TYPE_GROUP) {
+  if (GetType(field) == FieldDescriptor::TYPE_GROUP) {
     return field->message_type()->name();
   } else {
     return field->name();
@@ -132,16 +134,27 @@ string FileClassName(const FileDescriptor* file) {
 }
 
 string FileJavaPackage(const FileDescriptor* file) {
+  string result;
+
   if (file->options().has_java_package()) {
-    return file->options().java_package();
+    result = file->options().java_package();
   } else {
-    string result = kDefaultPackage;
+    result = kDefaultPackage;
     if (!file->package().empty()) {
       if (!result.empty()) result += '.';
       result += file->package();
     }
-    return result;
   }
+
+
+  return result;
+}
+
+string JavaPackageToDir(string package_name) {
+  string package_dir =
+    StringReplace(package_name, ".", "/", true);
+  if (!package_dir.empty()) package_dir += "/";
+  return package_dir;
 }
 
 string ToJavaName(const string& full_name, const FileDescriptor* file) {
@@ -164,6 +177,18 @@ string ToJavaName(const string& full_name, const FileDescriptor* file) {
   return result;
 }
 
+string ClassName(const Descriptor* descriptor) {
+  return ToJavaName(descriptor->full_name(), descriptor->file());
+}
+
+string ClassName(const EnumDescriptor* descriptor) {
+  return ToJavaName(descriptor->full_name(), descriptor->file());
+}
+
+string ClassName(const ServiceDescriptor* descriptor) {
+  return ToJavaName(descriptor->full_name(), descriptor->file());
+}
+
 string ClassName(const FileDescriptor* descriptor) {
   string result = FileJavaPackage(descriptor);
   if (!result.empty()) result += '.';
@@ -171,8 +196,18 @@ string ClassName(const FileDescriptor* descriptor) {
   return result;
 }
 
-JavaType GetJavaType(FieldDescriptor::Type field_type) {
-  switch (field_type) {
+string FieldConstantName(const FieldDescriptor *field) {
+  string name = field->name() + "_FIELD_NUMBER";
+  UpperString(&name);
+  return name;
+}
+
+FieldDescriptor::Type GetType(const FieldDescriptor* field) {
+  return field->type();
+}
+
+JavaType GetJavaType(const FieldDescriptor* field) {
+  switch (GetType(field)) {
     case FieldDescriptor::TYPE_INT32:
     case FieldDescriptor::TYPE_UINT32:
     case FieldDescriptor::TYPE_SINT32:
@@ -235,6 +270,228 @@ const char* BoxedPrimitiveTypeName(JavaType type) {
 
   GOOGLE_LOG(FATAL) << "Can't get here.";
   return NULL;
+}
+
+bool AllAscii(const string& text) {
+  for (int i = 0; i < text.size(); i++) {
+    if ((text[i] & 0x80) != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+string DefaultValue(const FieldDescriptor* field) {
+  // Switch on CppType since we need to know which default_value_* method
+  // of FieldDescriptor to call.
+  switch (field->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_INT32:
+      return SimpleItoa(field->default_value_int32());
+    case FieldDescriptor::CPPTYPE_UINT32:
+      // Need to print as a signed int since Java has no unsigned.
+      return SimpleItoa(static_cast<int32>(field->default_value_uint32()));
+    case FieldDescriptor::CPPTYPE_INT64:
+      return SimpleItoa(field->default_value_int64()) + "L";
+    case FieldDescriptor::CPPTYPE_UINT64:
+      return SimpleItoa(static_cast<int64>(field->default_value_uint64())) +
+             "L";
+    case FieldDescriptor::CPPTYPE_DOUBLE: {
+      double value = field->default_value_double();
+      if (value == numeric_limits<double>::infinity()) {
+        return "Double.POSITIVE_INFINITY";
+      } else if (value == -numeric_limits<double>::infinity()) {
+        return "Double.NEGATIVE_INFINITY";
+      } else if (value != value) {
+        return "Double.NaN";
+      } else {
+        return SimpleDtoa(value) + "D";
+      }
+    }
+    case FieldDescriptor::CPPTYPE_FLOAT: {
+      float value = field->default_value_float();
+      if (value == numeric_limits<float>::infinity()) {
+        return "Float.POSITIVE_INFINITY";
+      } else if (value == -numeric_limits<float>::infinity()) {
+        return "Float.NEGATIVE_INFINITY";
+      } else if (value != value) {
+        return "Float.NaN";
+      } else {
+        return SimpleFtoa(value) + "F";
+      }
+    }
+    case FieldDescriptor::CPPTYPE_BOOL:
+      return field->default_value_bool() ? "true" : "false";
+    case FieldDescriptor::CPPTYPE_STRING:
+      if (GetType(field) == FieldDescriptor::TYPE_BYTES) {
+        if (field->has_default_value()) {
+          // See comments in Internal.java for gory details.
+          return strings::Substitute(
+            "com.google.protobuf.Internal.bytesDefaultValue(\"$0\")",
+            CEscape(field->default_value_string()));
+        } else {
+          return "com.google.protobuf.ByteString.EMPTY";
+        }
+      } else {
+        if (AllAscii(field->default_value_string())) {
+          // All chars are ASCII.  In this case CEscape() works fine.
+          return "\"" + CEscape(field->default_value_string()) + "\"";
+        } else {
+          // See comments in Internal.java for gory details.
+          return strings::Substitute(
+              "com.google.protobuf.Internal.stringDefaultValue(\"$0\")",
+              CEscape(field->default_value_string()));
+        }
+      }
+
+    case FieldDescriptor::CPPTYPE_ENUM:
+      return ClassName(field->enum_type()) + "." +
+          field->default_value_enum()->name();
+
+    case FieldDescriptor::CPPTYPE_MESSAGE:
+      return ClassName(field->message_type()) + ".getDefaultInstance()";
+
+    // No default because we want the compiler to complain if any new
+    // types are added.
+  }
+
+  GOOGLE_LOG(FATAL) << "Can't get here.";
+  return "";
+}
+
+bool IsDefaultValueJavaDefault(const FieldDescriptor* field) {
+  // Switch on CppType since we need to know which default_value_* method
+  // of FieldDescriptor to call.
+  switch (field->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_INT32:
+      return field->default_value_int32() == 0;
+    case FieldDescriptor::CPPTYPE_UINT32:
+      return field->default_value_uint32() == 0;
+    case FieldDescriptor::CPPTYPE_INT64:
+      return field->default_value_int64() == 0L;
+    case FieldDescriptor::CPPTYPE_UINT64:
+      return field->default_value_uint64() == 0L;
+    case FieldDescriptor::CPPTYPE_DOUBLE:
+      return field->default_value_double() == 0.0;
+    case FieldDescriptor::CPPTYPE_FLOAT:
+      return field->default_value_float() == 0.0;
+    case FieldDescriptor::CPPTYPE_BOOL:
+      return field->default_value_bool() == false;
+
+    case FieldDescriptor::CPPTYPE_STRING:
+    case FieldDescriptor::CPPTYPE_ENUM:
+    case FieldDescriptor::CPPTYPE_MESSAGE:
+      return false;
+
+    // No default because we want the compiler to complain if any new
+    // types are added.
+  }
+
+  GOOGLE_LOG(FATAL) << "Can't get here.";
+  return false;
+}
+
+const char* bit_masks[] = {
+  "0x00000001",
+  "0x00000002",
+  "0x00000004",
+  "0x00000008",
+  "0x00000010",
+  "0x00000020",
+  "0x00000040",
+  "0x00000080",
+
+  "0x00000100",
+  "0x00000200",
+  "0x00000400",
+  "0x00000800",
+  "0x00001000",
+  "0x00002000",
+  "0x00004000",
+  "0x00008000",
+
+  "0x00010000",
+  "0x00020000",
+  "0x00040000",
+  "0x00080000",
+  "0x00100000",
+  "0x00200000",
+  "0x00400000",
+  "0x00800000",
+
+  "0x01000000",
+  "0x02000000",
+  "0x04000000",
+  "0x08000000",
+  "0x10000000",
+  "0x20000000",
+  "0x40000000",
+  "0x80000000",
+};
+
+string GetBitFieldName(int index) {
+  string varName = "bitField";
+  varName += SimpleItoa(index);
+  varName += "_";
+  return varName;
+}
+
+string GetBitFieldNameForBit(int bitIndex) {
+  return GetBitFieldName(bitIndex / 32);
+}
+
+namespace {
+
+string GenerateGetBitInternal(const string& prefix, int bitIndex) {
+  string varName = prefix + GetBitFieldNameForBit(bitIndex);
+  int bitInVarIndex = bitIndex % 32;
+
+  string mask = bit_masks[bitInVarIndex];
+  string result = "((" + varName + " & " + mask + ") == " + mask + ")";
+  return result;
+}
+
+string GenerateSetBitInternal(const string& prefix, int bitIndex) {
+  string varName = prefix + GetBitFieldNameForBit(bitIndex);
+  int bitInVarIndex = bitIndex % 32;
+
+  string mask = bit_masks[bitInVarIndex];
+  string result = varName + " |= " + mask;
+  return result;
+}
+
+}  // namespace
+
+string GenerateGetBit(int bitIndex) {
+  return GenerateGetBitInternal("", bitIndex);
+}
+
+string GenerateSetBit(int bitIndex) {
+  return GenerateSetBitInternal("", bitIndex);
+}
+
+string GenerateClearBit(int bitIndex) {
+  string varName = GetBitFieldNameForBit(bitIndex);
+  int bitInVarIndex = bitIndex % 32;
+
+  string mask = bit_masks[bitInVarIndex];
+  string result = varName + " = (" + varName + " & ~" + mask + ")";
+  return result;
+}
+
+string GenerateGetBitFromLocal(int bitIndex) {
+  return GenerateGetBitInternal("from_", bitIndex);
+}
+
+string GenerateSetBitToLocal(int bitIndex) {
+  return GenerateSetBitInternal("to_", bitIndex);
+}
+
+string GenerateGetBitMutableLocal(int bitIndex) {
+  return GenerateGetBitInternal("mutable_", bitIndex);
+}
+
+string GenerateSetBitMutableLocal(int bitIndex) {
+  return GenerateSetBitInternal("mutable_", bitIndex);
 }
 
 }  // namespace java

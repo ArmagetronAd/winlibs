@@ -38,6 +38,7 @@
 #include <string>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/compiler/cpp/cpp_field.h>
+#include <google/protobuf/compiler/cpp/cpp_options.h>
 
 namespace google {
 namespace protobuf {
@@ -57,7 +58,7 @@ class MessageGenerator {
  public:
   // See generator.cc for the meaning of dllexport_decl.
   explicit MessageGenerator(const Descriptor* descriptor,
-                            const string& dllexport_decl);
+                            const Options& options);
   ~MessageGenerator();
 
   // Header stuff.
@@ -68,6 +69,10 @@ class MessageGenerator {
   // Generate definitions of all nested enums (must come before class
   // definitions because those classes use the enums definitions).
   void GenerateEnumDefinitions(io::Printer* printer);
+
+  // Generate specializations of GetEnumDescriptor<MyEnum>().
+  // Precondition: in ::google::protobuf namespace.
+  void GenerateGetEnumDescriptorSpecializations(io::Printer* printer);
 
   // Generate definitions for this class and all its nested types.
   void GenerateClassDefinition(io::Printer* printer);
@@ -86,8 +91,21 @@ class MessageGenerator {
   // descriptor.
   void GenerateDescriptorInitializer(io::Printer* printer, int index);
 
-  // Generates code that initializes the message's default instance.
+  // Generate code that calls MessageFactory::InternalRegisterGeneratedMessage()
+  // for all types.
+  void GenerateTypeRegistrations(io::Printer* printer);
+
+  // Generates code that allocates the message's default instance.
+  void GenerateDefaultInstanceAllocator(io::Printer* printer);
+
+  // Generates code that initializes the message's default instance.  This
+  // is separate from allocating because all default instances must be
+  // allocated before any can be initialized.
   void GenerateDefaultInstanceInitializer(io::Printer* printer);
+
+  // Generates code that should be run when ShutdownProtobufLibrary() is called,
+  // to delete all dynamically-allocated objects.
+  void GenerateShutdownCode(io::Printer* printer);
 
   // Generate all non-inline methods for this class.
   void GenerateClassMethods(io::Printer* printer);
@@ -103,15 +121,22 @@ class MessageGenerator {
   // Generate constructors and destructor.
   void GenerateStructors(io::Printer* printer);
 
-  // Generate the member initializer list for the constructors. The member
-  // initializer list is shared between the default constructor and the copy
-  // constructor.
-  void GenerateInitializerList(io::Printer* printer);
+  // The compiler typically generates multiple copies of each constructor and
+  // destructor: http://gcc.gnu.org/bugs.html#nonbugs_cxx
+  // Placing common code in a separate method reduces the generated code size.
+  //
+  // Generate the shared constructor code.
+  void GenerateSharedConstructorCode(io::Printer* printer);
+  // Generate the shared destructor code.
+  void GenerateSharedDestructorCode(io::Printer* printer);
 
   // Generate standard Message methods.
   void GenerateClear(io::Printer* printer);
   void GenerateMergeFromCodedStream(io::Printer* printer);
   void GenerateSerializeWithCachedSizes(io::Printer* printer);
+  void GenerateSerializeWithCachedSizesToArray(io::Printer* printer);
+  void GenerateSerializeWithCachedSizesBody(io::Printer* printer,
+                                            bool to_array);
   void GenerateByteSize(io::Printer* printer);
   void GenerateMergeFrom(io::Printer* printer);
   void GenerateCopyFrom(io::Printer* printer);
@@ -120,13 +145,16 @@ class MessageGenerator {
 
   // Helpers for GenerateSerializeWithCachedSizes().
   void GenerateSerializeOneField(io::Printer* printer,
-                                 const FieldDescriptor* field);
+                                 const FieldDescriptor* field,
+                                 bool unbounded);
   void GenerateSerializeOneExtensionRange(
-      io::Printer* printer, const Descriptor::ExtensionRange* range);
+      io::Printer* printer, const Descriptor::ExtensionRange* range,
+      bool unbounded);
+
 
   const Descriptor* descriptor_;
   string classname_;
-  string dllexport_decl_;
+  Options options_;
   FieldGeneratorMap field_generators_;
   scoped_array<scoped_ptr<MessageGenerator> > nested_generators_;
   scoped_array<scoped_ptr<EnumGenerator> > enum_generators_;

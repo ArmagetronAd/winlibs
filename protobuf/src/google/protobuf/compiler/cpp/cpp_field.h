@@ -35,8 +35,12 @@
 #ifndef GOOGLE_PROTOBUF_COMPILER_CPP_FIELD_H__
 #define GOOGLE_PROTOBUF_COMPILER_CPP_FIELD_H__
 
+#include <map>
+#include <string>
+
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/compiler/cpp/cpp_options.h>
 
 namespace google {
 namespace protobuf {
@@ -48,6 +52,14 @@ namespace protobuf {
 namespace protobuf {
 namespace compiler {
 namespace cpp {
+
+// Helper function: set variables in the map that are the same for all
+// field code generators.
+// ['name', 'index', 'number', 'classname', 'declared_type', 'tag_size',
+// 'deprecation'].
+void SetCommonFieldVariables(const FieldDescriptor* descriptor,
+                             map<string, string>* variables,
+                             const Options& options);
 
 class FieldGenerator {
  public:
@@ -94,26 +106,41 @@ class FieldGenerator {
   // message.cc under the GenerateSwap method.
   virtual void GenerateSwappingCode(io::Printer* printer) const = 0;
 
-  // Generate any initializers needed for the private members declared by
-  // GeneratePrivateMembers().  These go into the message class's
-  // constructor's initializer list.  For each initializer, this method
-  // must print the comma and newline separating it from the *previous*
-  // initializer, not the *next* initailizer.  That is, print a ",\n" first,
-  // e.g.:
-  //   printer->Print(",\n$name$_($default$)");
-  virtual void GenerateInitializer(io::Printer* printer) const = 0;
+  // Generate initialization code for private members declared by
+  // GeneratePrivateMembers(). These go into the message class's SharedCtor()
+  // method, invoked by each of the generated constructors.
+  virtual void GenerateConstructorCode(io::Printer* printer) const = 0;
 
-  // Generate any code that needs to go in the class's destructor.
+  // Generate any code that needs to go in the class's SharedDtor() method,
+  // invoked by the destructor.
   // Most field types don't need this, so the default implementation is empty.
   virtual void GenerateDestructorCode(io::Printer* printer) const {}
+
+  // Generate code that allocates the fields's default instance.
+  virtual void GenerateDefaultInstanceAllocator(io::Printer* printer) const {}
+
+  // Generate code that should be run when ShutdownProtobufLibrary() is called,
+  // to delete all dynamically-allocated objects.
+  virtual void GenerateShutdownCode(io::Printer* printer) const {}
 
   // Generate lines to decode this field, which will be placed inside the
   // message's MergeFromCodedStream() method.
   virtual void GenerateMergeFromCodedStream(io::Printer* printer) const = 0;
 
+  // Generate lines to decode this field from a packed value, which will be
+  // placed inside the message's MergeFromCodedStream() method.
+  virtual void GenerateMergeFromCodedStreamWithPacking(io::Printer* printer)
+      const;
+
   // Generate lines to serialize this field, which are placed within the
   // message's SerializeWithCachedSizes() method.
   virtual void GenerateSerializeWithCachedSizes(io::Printer* printer) const = 0;
+
+  // Generate lines to serialize this field directly to the array "target",
+  // which are placed within the message's SerializeWithCachedSizesToArray()
+  // method. This must also advance "target" past the written bytes.
+  virtual void GenerateSerializeWithCachedSizesToArray(
+      io::Printer* printer) const = 0;
 
   // Generate lines to compute the serialized size of this field, which
   // are placed in the message's ByteSize() method.
@@ -126,7 +153,7 @@ class FieldGenerator {
 // Convenience class which constructs FieldGenerators for a Descriptor.
 class FieldGeneratorMap {
  public:
-  explicit FieldGeneratorMap(const Descriptor* descriptor);
+  explicit FieldGeneratorMap(const Descriptor* descriptor, const Options& options);
   ~FieldGeneratorMap();
 
   const FieldGenerator& get(const FieldDescriptor* field) const;
@@ -135,10 +162,12 @@ class FieldGeneratorMap {
   const Descriptor* descriptor_;
   scoped_array<scoped_ptr<FieldGenerator> > field_generators_;
 
-  static FieldGenerator* MakeGenerator(const FieldDescriptor* field);
+  static FieldGenerator* MakeGenerator(const FieldDescriptor* field,
+                                       const Options& options);
 
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(FieldGeneratorMap);
 };
+
 
 }  // namespace cpp
 }  // namespace compiler
