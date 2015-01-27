@@ -30,13 +30,15 @@
 
 package com.google.protobuf;
 
+import protobuf_unittest.UnittestProto.SparseEnumMessage;
 import protobuf_unittest.UnittestProto.TestAllTypes;
+import protobuf_unittest.UnittestProto.TestPackedTypes;
+import protobuf_unittest.UnittestProto.TestSparseEnum;
 
 import junit.framework.TestCase;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -289,5 +291,27 @@ public class CodedOutputStreamTest extends TestCase {
       output.flush();
       assertEqualBytes(rawBytes, rawOutput.toByteArray());
     }
+  }
+
+  /** Tests writing a whole message with every packed field type. Ensures the
+   * wire format of packed fields is compatible with C++. */
+  public void testWriteWholePackedFieldsMessage() throws Exception {
+    TestPackedTypes message = TestUtil.getPackedSet();
+
+    byte[] rawBytes = message.toByteArray();
+    assertEqualBytes(TestUtil.getGoldenPackedFieldsMessage().toByteArray(),
+                     rawBytes);
+  }
+
+  /** Test writing a message containing a negative enum value. This used to
+   * fail because the size was not properly computed as a sign-extended varint.
+   */
+  public void testWriteMessageWithNegativeEnumValue() throws Exception {
+    SparseEnumMessage message = SparseEnumMessage.newBuilder()
+        .setSparseEnum(TestSparseEnum.SPARSE_E) .build();
+    assertTrue(message.getSparseEnum().getNumber() < 0);
+    byte[] rawBytes = message.toByteArray();
+    SparseEnumMessage message2 = SparseEnumMessage.parseFrom(rawBytes);
+    assertEquals(TestSparseEnum.SPARSE_E, message2.getSparseEnum());
   }
 }

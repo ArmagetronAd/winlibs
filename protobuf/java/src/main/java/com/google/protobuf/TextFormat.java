@@ -38,6 +38,7 @@ import com.google.protobuf.Descriptors.EnumValueDescriptor;
 import java.io.IOException;
 import java.nio.CharBuffer;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,45 +46,79 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Provide ascii text parsing and formatting support for proto2 instances.
+ * Provide text parsing and formatting support for proto2 instances.
  * The implementation largely follows google/protobuf/text_format.cc.
  *
  * @author wenboz@google.com Wenbo Zhu
  * @author kenton@google.com Kenton Varda
  */
 public final class TextFormat {
+  private TextFormat() {}
+
+  private static final Printer DEFAULT_PRINTER = new Printer();
+  private static final Printer SINGLE_LINE_PRINTER =
+      (new Printer()).setSingleLineMode(true);
+  private static final Printer UNICODE_PRINTER =
+      (new Printer()).setEscapeNonAscii(false);
 
   /**
    * Outputs a textual representation of the Protocol Message supplied into
    * the parameter output. (This representation is the new version of the
    * classic "ProtocolPrinter" output from the original Protocol Buffer system)
    */
-  public static void print(Message message, Appendable output)
+  public static void print(final MessageOrBuilder message, final Appendable output)
                            throws IOException {
-    TextGenerator generator = new TextGenerator(output);
-    print(message, generator);
+    DEFAULT_PRINTER.print(message, new TextGenerator(output));
   }
 
   /** Outputs a textual representation of {@code fields} to {@code output}. */
-  public static void print(UnknownFieldSet fields, Appendable output)
+  public static void print(final UnknownFieldSet fields,
+                           final Appendable output)
                            throws IOException {
-    TextGenerator generator = new TextGenerator(output);
-    printUnknownFields(fields, generator);
+    DEFAULT_PRINTER.printUnknownFields(fields, new TextGenerator(output));
+  }
+
+  /**
+   * Generates a human readable form of this message, useful for debugging and
+   * other purposes, with no newline characters.
+   */
+  public static String shortDebugString(final MessageOrBuilder message) {
+    try {
+      final StringBuilder sb = new StringBuilder();
+      SINGLE_LINE_PRINTER.print(message, new TextGenerator(sb));
+      // Single line mode currently might have an extra space at the end.
+      return sb.toString().trim();
+    } catch (IOException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  /**
+   * Generates a human readable form of the unknown fields, useful for debugging
+   * and other purposes, with no newline characters.
+   */
+  public static String shortDebugString(final UnknownFieldSet fields) {
+    try {
+      final StringBuilder sb = new StringBuilder();
+      SINGLE_LINE_PRINTER.printUnknownFields(fields, new TextGenerator(sb));
+      // Single line mode currently might have an extra space at the end.
+      return sb.toString().trim();
+    } catch (IOException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   /**
    * Like {@code print()}, but writes directly to a {@code String} and
    * returns it.
    */
-  public static String printToString(Message message) {
+  public static String printToString(final MessageOrBuilder message) {
     try {
-      StringBuilder text = new StringBuilder();
+      final StringBuilder text = new StringBuilder();
       print(message, text);
       return text.toString();
     } catch (IOException e) {
-      throw new RuntimeException(
-        "Writing to a StringBuilder threw an IOException (should never " +
-        "happen).", e);
+      throw new IllegalStateException(e);
     }
   }
 
@@ -91,181 +126,336 @@ public final class TextFormat {
    * Like {@code print()}, but writes directly to a {@code String} and
    * returns it.
    */
-  public static String printToString(UnknownFieldSet fields) {
+  public static String printToString(final UnknownFieldSet fields) {
     try {
-      StringBuilder text = new StringBuilder();
+      final StringBuilder text = new StringBuilder();
       print(fields, text);
       return text.toString();
     } catch (IOException e) {
-      throw new RuntimeException(
-        "Writing to a StringBuilder threw an IOException (should never " +
-        "happen).", e);
+      throw new IllegalStateException(e);
     }
   }
 
-  private static void print(Message message, TextGenerator generator)
-      throws IOException {
-    for (Map.Entry<FieldDescriptor, Object> field :
-         message.getAllFields().entrySet()) {
-      printField(field.getKey(), field.getValue(), generator);
+  /**
+   * Same as {@code printToString()}, except that non-ASCII characters
+   * in string type fields are not escaped in backslash+octals.
+   */
+  public static String printToUnicodeString(final MessageOrBuilder message) {
+    try {
+      final StringBuilder text = new StringBuilder();
+      UNICODE_PRINTER.print(message, new TextGenerator(text));
+      return text.toString();
+    } catch (IOException e) {
+      throw new IllegalStateException(e);
     }
-    printUnknownFields(message.getUnknownFields(), generator);
   }
 
-  public static void printField(FieldDescriptor field,
-                                Object value,
-                                TextGenerator generator)
+  /**
+   * Same as {@code printToString()}, except that non-ASCII characters
+   * in string type fields are not escaped in backslash+octals.
+   */
+  public static String printToUnicodeString(final UnknownFieldSet fields) {
+    try {
+      final StringBuilder text = new StringBuilder();
+      UNICODE_PRINTER.printUnknownFields(fields, new TextGenerator(text));
+      return text.toString();
+    } catch (IOException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  public static void printField(final FieldDescriptor field,
+                                final Object value,
+                                final Appendable output)
                                 throws IOException {
-    if (field.isRepeated()) {
-      // Repeated field.  Print each element.
-      for (Object element : (List) value) {
-        printSingleField(field, element, generator);
-      }
-    } else {
-      printSingleField(field, value, generator);
+    DEFAULT_PRINTER.printField(field, value, new TextGenerator(output));
+  }
+
+  public static String printFieldToString(final FieldDescriptor field,
+                                          final Object value) {
+    try {
+      final StringBuilder text = new StringBuilder();
+      printField(field, value, text);
+      return text.toString();
+    } catch (IOException e) {
+      throw new IllegalStateException(e);
     }
   }
 
-  private static void printSingleField(FieldDescriptor field,
-                                       Object value,
-                                       TextGenerator generator)
-                                       throws IOException {
-    if (field.isExtension()) {
-      generator.print("[");
-      // We special-case MessageSet elements for compatibility with proto1.
-      if (field.getContainingType().getOptions().getMessageSetWireFormat()
-          && (field.getType() == FieldDescriptor.Type.MESSAGE)
-          && (field.isOptional())
-          // object equality
-          && (field.getExtensionScope() == field.getMessageType())) {
-        generator.print(field.getMessageType().getFullName());
-      } else {
-        generator.print(field.getFullName());
-      }
-      generator.print("]");
-    } else {
-      if (field.getType() == FieldDescriptor.Type.GROUP) {
-        // Groups must be serialized with their original capitalization.
-        generator.print(field.getMessageType().getName());
-      } else {
-        generator.print(field.getName());
-      }
-    }
-
-    if (field.getJavaType() == FieldDescriptor.JavaType.MESSAGE) {
-      generator.print(" {\n");
-      generator.indent();
-    } else {
-      generator.print(": ");
-    }
-
-    printFieldValue(field, value, generator);
-
-    if (field.getJavaType() == FieldDescriptor.JavaType.MESSAGE) {
-      generator.outdent();
-      generator.print("}");
-    }
-    generator.print("\n");
+  /**
+   * Outputs a textual representation of the value of given field value.
+   *
+   * @param field the descriptor of the field
+   * @param value the value of the field
+   * @param output the output to which to append the formatted value
+   * @throws ClassCastException if the value is not appropriate for the
+   *     given field descriptor
+   * @throws IOException if there is an exception writing to the output
+   */
+  public static void printFieldValue(final FieldDescriptor field,
+                                     final Object value,
+                                     final Appendable output)
+                                     throws IOException {
+    DEFAULT_PRINTER.printFieldValue(field, value, new TextGenerator(output));
   }
 
-  private static void printFieldValue(FieldDescriptor field,
-                                      Object value,
-                                      TextGenerator generator)
-                                      throws IOException {
-    switch (field.getType()) {
-      case INT32:
-      case INT64:
-      case SINT32:
-      case SINT64:
-      case SFIXED32:
-      case SFIXED64:
-      case FLOAT:
-      case DOUBLE:
-      case BOOL:
-        // Good old toString() does what we want for these types.
-        generator.print(value.toString());
-        break;
+  /**
+   * Outputs a textual representation of the value of an unknown field.
+   *
+   * @param tag the field's tag number
+   * @param value the value of the field
+   * @param output the output to which to append the formatted value
+   * @throws ClassCastException if the value is not appropriate for the
+   *     given field descriptor
+   * @throws IOException if there is an exception writing to the output
+   */
+  public static void printUnknownFieldValue(final int tag,
+                                            final Object value,
+                                            final Appendable output)
+                                            throws IOException {
+    printUnknownFieldValue(tag, value, new TextGenerator(output));
+  }
 
-      case UINT32:
-      case FIXED32:
-        generator.print(unsignedToString((Integer) value));
-        break;
-
-      case UINT64:
-      case FIXED64:
+  private static void printUnknownFieldValue(final int tag,
+                                             final Object value,
+                                             final TextGenerator generator)
+                                             throws IOException {
+    switch (WireFormat.getTagWireType(tag)) {
+      case WireFormat.WIRETYPE_VARINT:
         generator.print(unsignedToString((Long) value));
         break;
-
-      case STRING:
-        generator.print("\"");
-        generator.print(escapeText((String) value));
-        generator.print("\"");
+      case WireFormat.WIRETYPE_FIXED32:
+        generator.print(
+            String.format((Locale) null, "0x%08x", (Integer) value));
         break;
-
-      case BYTES: {
+      case WireFormat.WIRETYPE_FIXED64:
+        generator.print(String.format((Locale) null, "0x%016x", (Long) value));
+        break;
+      case WireFormat.WIRETYPE_LENGTH_DELIMITED:
         generator.print("\"");
         generator.print(escapeBytes((ByteString) value));
         generator.print("\"");
         break;
-      }
-
-      case ENUM: {
-        generator.print(((EnumValueDescriptor) value).getName());
+      case WireFormat.WIRETYPE_START_GROUP:
+        DEFAULT_PRINTER.printUnknownFields((UnknownFieldSet) value, generator);
         break;
-      }
-
-      case MESSAGE:
-      case GROUP:
-        print((Message) value, generator);
-        break;
+      default:
+        throw new IllegalArgumentException("Bad tag: " + tag);
     }
   }
 
-  private static void printUnknownFields(UnknownFieldSet unknownFields,
-                                         TextGenerator generator)
-                                         throws IOException {
-    for (Map.Entry<Integer, UnknownFieldSet.Field> entry :
-         unknownFields.asMap().entrySet()) {
-      String prefix = entry.getKey().toString() + ": ";
-      UnknownFieldSet.Field field = entry.getValue();
+  /** Helper class for converting protobufs to text. */
+  private static final class Printer {
+    /** Whether to omit newlines from the output. */
+    boolean singleLineMode = false;
 
-      for (long value : field.getVarintList()) {
-        generator.print(entry.getKey().toString());
+    /** Whether to escape non ASCII characters with backslash and octal. */
+    boolean escapeNonAscii = true;
+
+    private Printer() {}
+
+    /** Setter of singleLineMode */
+    private Printer setSingleLineMode(boolean singleLineMode) {
+      this.singleLineMode = singleLineMode;
+      return this;
+    }
+
+    /** Setter of escapeNonAscii */
+    private Printer setEscapeNonAscii(boolean escapeNonAscii) {
+      this.escapeNonAscii = escapeNonAscii;
+      return this;
+    }
+
+    private void print(final MessageOrBuilder message, final TextGenerator generator)
+        throws IOException {
+      for (Map.Entry<FieldDescriptor, Object> field
+          : message.getAllFields().entrySet()) {
+        printField(field.getKey(), field.getValue(), generator);
+      }
+      printUnknownFields(message.getUnknownFields(), generator);
+    }
+
+    private void printField(final FieldDescriptor field, final Object value,
+        final TextGenerator generator) throws IOException {
+      if (field.isRepeated()) {
+        // Repeated field.  Print each element.
+        for (Object element : (List<?>) value) {
+          printSingleField(field, element, generator);
+        }
+      } else {
+        printSingleField(field, value, generator);
+      }
+    }
+
+    private void printSingleField(final FieldDescriptor field,
+                                  final Object value,
+                                  final TextGenerator generator)
+                                  throws IOException {
+      if (field.isExtension()) {
+        generator.print("[");
+        // We special-case MessageSet elements for compatibility with proto1.
+        if (field.getContainingType().getOptions().getMessageSetWireFormat()
+            && (field.getType() == FieldDescriptor.Type.MESSAGE)
+            && (field.isOptional())
+            // object equality
+            && (field.getExtensionScope() == field.getMessageType())) {
+          generator.print(field.getMessageType().getFullName());
+        } else {
+          generator.print(field.getFullName());
+        }
+        generator.print("]");
+      } else {
+        if (field.getType() == FieldDescriptor.Type.GROUP) {
+          // Groups must be serialized with their original capitalization.
+          generator.print(field.getMessageType().getName());
+        } else {
+          generator.print(field.getName());
+        }
+      }
+
+      if (field.getJavaType() == FieldDescriptor.JavaType.MESSAGE) {
+        if (singleLineMode) {
+          generator.print(" { ");
+        } else {
+          generator.print(" {\n");
+          generator.indent();
+        }
+      } else {
         generator.print(": ");
-        generator.print(unsignedToString(value));
-        generator.print("\n");
       }
-      for (int value : field.getFixed32List()) {
-        generator.print(entry.getKey().toString());
+
+      printFieldValue(field, value, generator);
+
+      if (field.getJavaType() == FieldDescriptor.JavaType.MESSAGE) {
+        if (singleLineMode) {
+          generator.print("} ");
+        } else {
+          generator.outdent();
+          generator.print("}\n");
+        }
+      } else {
+        if (singleLineMode) {
+          generator.print(" ");
+        } else {
+          generator.print("\n");
+        }
+      }
+    }
+
+    private void printFieldValue(final FieldDescriptor field,
+                                 final Object value,
+                                 final TextGenerator generator)
+                                 throws IOException {
+      switch (field.getType()) {
+        case INT32:
+        case SINT32:
+        case SFIXED32:
+          generator.print(((Integer) value).toString());
+          break;
+
+        case INT64:
+        case SINT64:
+        case SFIXED64:
+          generator.print(((Long) value).toString());
+          break;
+
+        case BOOL:
+          generator.print(((Boolean) value).toString());
+          break;
+
+        case FLOAT:
+          generator.print(((Float) value).toString());
+          break;
+
+        case DOUBLE:
+          generator.print(((Double) value).toString());
+          break;
+
+        case UINT32:
+        case FIXED32:
+          generator.print(unsignedToString((Integer) value));
+          break;
+
+        case UINT64:
+        case FIXED64:
+          generator.print(unsignedToString((Long) value));
+          break;
+
+        case STRING:
+          generator.print("\"");
+          generator.print(escapeNonAscii ?
+              escapeText((String) value) :
+              (String) value);
+          generator.print("\"");
+          break;
+
+        case BYTES:
+          generator.print("\"");
+          generator.print(escapeBytes((ByteString) value));
+          generator.print("\"");
+          break;
+
+        case ENUM:
+          generator.print(((EnumValueDescriptor) value).getName());
+          break;
+
+        case MESSAGE:
+        case GROUP:
+          print((Message) value, generator);
+          break;
+      }
+    }
+
+    private void printUnknownFields(final UnknownFieldSet unknownFields,
+                                    final TextGenerator generator)
+                                    throws IOException {
+      for (Map.Entry<Integer, UnknownFieldSet.Field> entry :
+               unknownFields.asMap().entrySet()) {
+        final int number = entry.getKey();
+        final UnknownFieldSet.Field field = entry.getValue();
+        printUnknownField(number, WireFormat.WIRETYPE_VARINT,
+            field.getVarintList(), generator);
+        printUnknownField(number, WireFormat.WIRETYPE_FIXED32,
+            field.getFixed32List(), generator);
+        printUnknownField(number, WireFormat.WIRETYPE_FIXED64,
+            field.getFixed64List(), generator);
+        printUnknownField(number, WireFormat.WIRETYPE_LENGTH_DELIMITED,
+            field.getLengthDelimitedList(), generator);
+        for (final UnknownFieldSet value : field.getGroupList()) {
+          generator.print(entry.getKey().toString());
+          if (singleLineMode) {
+            generator.print(" { ");
+          } else {
+            generator.print(" {\n");
+            generator.indent();
+          }
+          printUnknownFields(value, generator);
+          if (singleLineMode) {
+            generator.print("} ");
+          } else {
+            generator.outdent();
+            generator.print("}\n");
+          }
+        }
+      }
+    }
+
+    private void printUnknownField(final int number,
+                                   final int wireType,
+                                   final List<?> values,
+                                   final TextGenerator generator)
+                                   throws IOException {
+      for (final Object value : values) {
+        generator.print(String.valueOf(number));
         generator.print(": ");
-        generator.print(String.format((Locale) null, "0x%08x", value));
-        generator.print("\n");
-      }
-      for (long value : field.getFixed64List()) {
-        generator.print(entry.getKey().toString());
-        generator.print(": ");
-        generator.print(String.format((Locale) null, "0x%016x", value));
-        generator.print("\n");
-      }
-      for (ByteString value : field.getLengthDelimitedList()) {
-        generator.print(entry.getKey().toString());
-        generator.print(": \"");
-        generator.print(escapeBytes(value));
-        generator.print("\"\n");
-      }
-      for (UnknownFieldSet value : field.getGroupList()) {
-        generator.print(entry.getKey().toString());
-        generator.print(" {\n");
-        generator.indent();
-        printUnknownFields(value, generator);
-        generator.outdent();
-        generator.print("}\n");
+        printUnknownFieldValue(wireType, value, generator);
+        generator.print(singleLineMode ? " " : "\n");
       }
     }
   }
 
   /** Convert an unsigned 32-bit integer to a string. */
-  private static String unsignedToString(int value) {
+  private static String unsignedToString(final int value) {
     if (value >= 0) {
       return Integer.toString(value);
     } else {
@@ -274,7 +464,7 @@ public final class TextFormat {
   }
 
   /** Convert an unsigned 64-bit integer to a string. */
-  private static String unsignedToString(long value) {
+  private static String unsignedToString(final long value) {
     if (value >= 0) {
       return Long.toString(value);
     } else {
@@ -288,13 +478,12 @@ public final class TextFormat {
   /**
    * An inner class for writing text to the output stream.
    */
-  static private final class TextGenerator {
+  private static final class TextGenerator {
+    private final Appendable output;
+    private final StringBuilder indent = new StringBuilder();
+    private boolean atStartOfLine = true;
 
-    Appendable output;
-    boolean atStartOfLine = true;
-    StringBuilder indent = new StringBuilder();
-
-    public TextGenerator(Appendable output) {
+    private TextGenerator(final Appendable output) {
       this.output = output;
     }
 
@@ -312,7 +501,7 @@ public final class TextFormat {
      * level is zero.
      */
     public void outdent() {
-      int length = indent.length();
+      final int length = indent.length();
       if (length == 0) {
         throw new IllegalArgumentException(
             " Outdent() without matching Indent().");
@@ -323,8 +512,8 @@ public final class TextFormat {
     /**
      * Print text to the output stream.
      */
-    public void print(CharSequence text) throws IOException {
-      int size = text.length();
+    public void print(final CharSequence text) throws IOException {
+      final int size = text.length();
       int pos = 0;
 
       for (int i = 0; i < size; i++) {
@@ -337,7 +526,8 @@ public final class TextFormat {
       write(text.subSequence(pos, size), size - pos);
     }
 
-    private void write(CharSequence data, int size) throws IOException {
+    private void write(final CharSequence data, final int size)
+                       throws IOException {
       if (size == 0) {
         return;
       }
@@ -397,27 +587,29 @@ public final class TextFormat {
     private int previousLine = 0;
     private int previousColumn = 0;
 
-    private static Pattern WHITESPACE =
-      Pattern.compile("(\\s|(#.*$))+", Pattern.MULTILINE);
-    private static Pattern TOKEN = Pattern.compile(
-      "[a-zA-Z_][0-9a-zA-Z_+-]*|" +                 // an identifier
-      "[0-9+-][0-9a-zA-Z_.+-]*|" +                  // a number
-      "\"([^\"\n\\\\]|\\\\.)*(\"|\\\\?$)|" +        // a double-quoted string
-      "\'([^\"\n\\\\]|\\\\.)*(\'|\\\\?$)",          // a single-quoted string
+    // We use possessive quantifiers (*+ and ++) because otherwise the Java
+    // regex matcher has stack overflows on large inputs.
+    private static final Pattern WHITESPACE =
+      Pattern.compile("(\\s|(#.*$))++", Pattern.MULTILINE);
+    private static final Pattern TOKEN = Pattern.compile(
+      "[a-zA-Z_][0-9a-zA-Z_+-]*+|" +                // an identifier
+      "[.]?[0-9+-][0-9a-zA-Z_.+-]*+|" +             // a number
+      "\"([^\"\n\\\\]|\\\\.)*+(\"|\\\\?$)|" +       // a double-quoted string
+      "\'([^\'\n\\\\]|\\\\.)*+(\'|\\\\?$)",         // a single-quoted string
       Pattern.MULTILINE);
 
-    private static Pattern DOUBLE_INFINITY = Pattern.compile(
+    private static final Pattern DOUBLE_INFINITY = Pattern.compile(
       "-?inf(inity)?",
       Pattern.CASE_INSENSITIVE);
-    private static Pattern FLOAT_INFINITY = Pattern.compile(
+    private static final Pattern FLOAT_INFINITY = Pattern.compile(
       "-?inf(inity)?f?",
       Pattern.CASE_INSENSITIVE);
-    private static Pattern FLOAT_NAN = Pattern.compile(
+    private static final Pattern FLOAT_NAN = Pattern.compile(
       "nanf?",
       Pattern.CASE_INSENSITIVE);
 
     /** Construct a tokenizer that parses tokens from the given text. */
-    public Tokenizer(CharSequence text) {
+    private Tokenizer(final CharSequence text) {
       this.text = text;
       this.matcher = WHITESPACE.matcher(text);
       skipWhitespace();
@@ -479,7 +671,7 @@ public final class TextFormat {
      * If the next token exactly matches {@code token}, consume it and return
      * {@code true}.  Otherwise, return {@code false} without doing anything.
      */
-    public boolean tryConsume(String token) {
+    public boolean tryConsume(final String token) {
       if (currentToken.equals(token)) {
         nextToken();
         return true;
@@ -492,7 +684,7 @@ public final class TextFormat {
      * If the next token exactly matches {@code token}, consume it.  Otherwise,
      * throw a {@link ParseException}.
      */
-    public void consume(String token) throws ParseException {
+    public void consume(final String token) throws ParseException {
       if (!tryConsume(token)) {
         throw parseException("Expected \"" + token + "\".");
       }
@@ -507,7 +699,7 @@ public final class TextFormat {
         return false;
       }
 
-      char c = currentToken.charAt(0);
+      final char c = currentToken.charAt(0);
       return ('0' <= c && c <= '9') ||
              c == '-' || c == '+';
     }
@@ -518,7 +710,7 @@ public final class TextFormat {
      */
     public String consumeIdentifier() throws ParseException {
       for (int i = 0; i < currentToken.length(); i++) {
-        char c = currentToken.charAt(i);
+        final char c = currentToken.charAt(i);
         if (('a' <= c && c <= 'z') ||
             ('A' <= c && c <= 'Z') ||
             ('0' <= c && c <= '9') ||
@@ -529,7 +721,7 @@ public final class TextFormat {
         }
       }
 
-      String result = currentToken;
+      final String result = currentToken;
       nextToken();
       return result;
     }
@@ -540,7 +732,7 @@ public final class TextFormat {
      */
     public int consumeInt32() throws ParseException {
       try {
-        int result = parseInt32(currentToken);
+        final int result = parseInt32(currentToken);
         nextToken();
         return result;
       } catch (NumberFormatException e) {
@@ -554,7 +746,7 @@ public final class TextFormat {
      */
     public int consumeUInt32() throws ParseException {
       try {
-        int result = parseUInt32(currentToken);
+        final int result = parseUInt32(currentToken);
         nextToken();
         return result;
       } catch (NumberFormatException e) {
@@ -568,7 +760,7 @@ public final class TextFormat {
      */
     public long consumeInt64() throws ParseException {
       try {
-        long result = parseInt64(currentToken);
+        final long result = parseInt64(currentToken);
         nextToken();
         return result;
       } catch (NumberFormatException e) {
@@ -582,7 +774,7 @@ public final class TextFormat {
      */
     public long consumeUInt64() throws ParseException {
       try {
-        long result = parseUInt64(currentToken);
+        final long result = parseUInt64(currentToken);
         nextToken();
         return result;
       } catch (NumberFormatException e) {
@@ -598,7 +790,7 @@ public final class TextFormat {
       // We need to parse infinity and nan separately because
       // Double.parseDouble() does not accept "inf", "infinity", or "nan".
       if (DOUBLE_INFINITY.matcher(currentToken).matches()) {
-        boolean negative = currentToken.startsWith("-");
+        final boolean negative = currentToken.startsWith("-");
         nextToken();
         return negative ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
       }
@@ -607,7 +799,7 @@ public final class TextFormat {
         return Double.NaN;
       }
       try {
-        double result = Double.parseDouble(currentToken);
+        final double result = Double.parseDouble(currentToken);
         nextToken();
         return result;
       } catch (NumberFormatException e) {
@@ -623,7 +815,7 @@ public final class TextFormat {
       // We need to parse infinity and nan separately because
       // Float.parseFloat() does not accept "inf", "infinity", or "nan".
       if (FLOAT_INFINITY.matcher(currentToken).matches()) {
-        boolean negative = currentToken.startsWith("-");
+        final boolean negative = currentToken.startsWith("-");
         nextToken();
         return negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
       }
@@ -632,7 +824,7 @@ public final class TextFormat {
         return Float.NaN;
       }
       try {
-        float result = Float.parseFloat(currentToken);
+        final float result = Float.parseFloat(currentToken);
         nextToken();
         return result;
       } catch (NumberFormatException e) {
@@ -645,10 +837,14 @@ public final class TextFormat {
      * Otherwise, throw a {@link ParseException}.
      */
     public boolean consumeBoolean() throws ParseException {
-      if (currentToken.equals("true")) {
+      if (currentToken.equals("true") ||
+          currentToken.equals("t") ||
+          currentToken.equals("1")) {
         nextToken();
         return true;
-      } else if (currentToken.equals("false")) {
+      } else if (currentToken.equals("false") ||
+                 currentToken.equals("f") ||
+                 currentToken.equals("0")) {
         nextToken();
         return false;
       } else {
@@ -670,7 +866,23 @@ public final class TextFormat {
      * {@link ParseException}.
      */
     public ByteString consumeByteString() throws ParseException {
-      char quote = currentToken.length() > 0 ? currentToken.charAt(0) : '\0';
+      List<ByteString> list = new ArrayList<ByteString>();
+      consumeByteString(list);
+      while (currentToken.startsWith("'") || currentToken.startsWith("\"")) {
+        consumeByteString(list);
+      }
+      return ByteString.copyFrom(list);
+    }
+
+    /**
+     * Like {@link #consumeByteString()} but adds each token of the string to
+     * the given list.  String literals (whether bytes or text) may come in
+     * multiple adjacent tokens which are automatically concatenated, like in
+     * C or Python.
+     */
+    private void consumeByteString(List<ByteString> list) throws ParseException {
+      final char quote = currentToken.length() > 0 ? currentToken.charAt(0)
+                                                   : '\0';
       if (quote != '\"' && quote != '\'') {
         throw parseException("Expected string.");
       }
@@ -681,11 +893,12 @@ public final class TextFormat {
       }
 
       try {
-        String escaped = currentToken.substring(1, currentToken.length() - 1);
-        ByteString result = unescapeBytes(escaped);
+        final String escaped =
+            currentToken.substring(1, currentToken.length() - 1);
+        final ByteString result = unescapeBytes(escaped);
         nextToken();
-        return result;
-      } catch (InvalidEscapeSequence e) {
+        list.add(result);
+      } catch (InvalidEscapeSequenceException e) {
         throw parseException(e.getMessage());
       }
     }
@@ -694,27 +907,29 @@ public final class TextFormat {
      * Returns a {@link ParseException} with the current line and column
      * numbers in the description, suitable for throwing.
      */
-    public ParseException parseException(String description) {
+    public ParseException parseException(final String description) {
       // Note:  People generally prefer one-based line and column numbers.
       return new ParseException(
-        (line + 1) + ":" + (column + 1) + ": " + description);
+        line + 1, column + 1, description);
     }
 
     /**
      * Returns a {@link ParseException} with the line and column numbers of
      * the previous token in the description, suitable for throwing.
      */
-    public ParseException parseExceptionPreviousToken(String description) {
+    public ParseException parseExceptionPreviousToken(
+        final String description) {
       // Note:  People generally prefer one-based line and column numbers.
       return new ParseException(
-        (previousLine + 1) + ":" + (previousColumn + 1) + ": " + description);
+        previousLine + 1, previousColumn + 1, description);
     }
 
     /**
      * Constructs an appropriate {@link ParseException} for the given
      * {@code NumberFormatException} when trying to parse an integer.
      */
-    private ParseException integerParseException(NumberFormatException e) {
+    private ParseException integerParseException(
+        final NumberFormatException e) {
       return parseException("Couldn't parse integer: " + e.getMessage());
     }
 
@@ -722,15 +937,54 @@ public final class TextFormat {
      * Constructs an appropriate {@link ParseException} for the given
      * {@code NumberFormatException} when trying to parse a float or double.
      */
-    private ParseException floatParseException(NumberFormatException e) {
+    private ParseException floatParseException(final NumberFormatException e) {
       return parseException("Couldn't parse number: " + e.getMessage());
     }
   }
 
   /** Thrown when parsing an invalid text format message. */
   public static class ParseException extends IOException {
-    public ParseException(String message) {
-      super(message);
+    private static final long serialVersionUID = 3196188060225107702L;
+
+    private final int line;
+    private final int column;
+
+    /** Create a new instance, with -1 as the line and column numbers. */
+    public ParseException(final String message) {
+      this(-1, -1, message);
+    }
+
+    /**
+     * Create a new instance
+     *
+     * @param line the line number where the parse error occurred,
+     * using 1-offset.
+     * @param column the column number where the parser error occurred,
+     * using 1-offset.
+     */
+    public ParseException(final int line, final int column,
+        final String message) {
+      super(Integer.toString(line) + ":" + column + ": " + message);
+      this.line = line;
+      this.column = column;
+    }
+
+    /**
+     * Return the line where the parse exception occurred, or -1 when
+     * none is provided. The value is specified as 1-offset, so the first
+     * line is line 1.
+     */
+    public int getLine() {
+      return line;
+    }
+
+    /**
+     * Return the column where the parse exception occurred, or -1 when
+     * none is provided. The value is specified as 1-offset, so the first
+     * line is line 1.
+     */
+    public int getColumn() {
+      return column;
     }
   }
 
@@ -738,9 +992,9 @@ public final class TextFormat {
    * Parse a text-format message from {@code input} and merge the contents
    * into {@code builder}.
    */
-  public static void merge(Readable input,
-                           Message.Builder builder)
-                           throws ParseException, IOException {
+  public static void merge(final Readable input,
+                           final Message.Builder builder)
+                           throws IOException {
     merge(input, ExtensionRegistry.getEmptyRegistry(), builder);
   }
 
@@ -748,8 +1002,8 @@ public final class TextFormat {
    * Parse a text-format message from {@code input} and merge the contents
    * into {@code builder}.
    */
-  public static void merge(CharSequence input,
-                           Message.Builder builder)
+  public static void merge(final CharSequence input,
+                           final Message.Builder builder)
                            throws ParseException {
     merge(input, ExtensionRegistry.getEmptyRegistry(), builder);
   }
@@ -759,10 +1013,10 @@ public final class TextFormat {
    * into {@code builder}.  Extensions will be recognized if they are
    * registered in {@code extensionRegistry}.
    */
-  public static void merge(Readable input,
-                           ExtensionRegistry extensionRegistry,
-                           Message.Builder builder)
-                           throws ParseException, IOException {
+  public static void merge(final Readable input,
+                           final ExtensionRegistry extensionRegistry,
+                           final Message.Builder builder)
+                           throws IOException {
     // Read the entire input to a String then parse that.
 
     // If StreamTokenizer were not quite so crippled, or if there were a kind
@@ -778,12 +1032,12 @@ public final class TextFormat {
 
   // TODO(chrisn): See if working around java.io.Reader#read(CharBuffer)
   // overhead is worthwhile
-  private static StringBuilder toStringBuilder(Readable input)
+  private static StringBuilder toStringBuilder(final Readable input)
       throws IOException {
-    StringBuilder text = new StringBuilder();
-    CharBuffer buffer = CharBuffer.allocate(BUFFER_SIZE);
+    final StringBuilder text = new StringBuilder();
+    final CharBuffer buffer = CharBuffer.allocate(BUFFER_SIZE);
     while (true) {
-      int n = input.read(buffer);
+      final int n = input.read(buffer);
       if (n == -1) {
         break;
       }
@@ -798,11 +1052,11 @@ public final class TextFormat {
    * into {@code builder}.  Extensions will be recognized if they are
    * registered in {@code extensionRegistry}.
    */
-  public static void merge(CharSequence input,
-                           ExtensionRegistry extensionRegistry,
-                           Message.Builder builder)
+  public static void merge(final CharSequence input,
+                           final ExtensionRegistry extensionRegistry,
+                           final Message.Builder builder)
                            throws ParseException {
-    Tokenizer tokenizer = new Tokenizer(input);
+    final Tokenizer tokenizer = new Tokenizer(input);
 
     while (!tokenizer.atEnd()) {
       mergeField(tokenizer, extensionRegistry, builder);
@@ -813,19 +1067,20 @@ public final class TextFormat {
    * Parse a single field from {@code tokenizer} and merge it into
    * {@code builder}.
    */
-  private static void mergeField(Tokenizer tokenizer,
-                                 ExtensionRegistry extensionRegistry,
-                                 Message.Builder builder)
+  private static void mergeField(final Tokenizer tokenizer,
+                                 final ExtensionRegistry extensionRegistry,
+                                 final Message.Builder builder)
                                  throws ParseException {
     FieldDescriptor field;
-    Descriptor type = builder.getDescriptorForType();
+    final Descriptor type = builder.getDescriptorForType();
     ExtensionRegistry.ExtensionInfo extension = null;
 
     if (tokenizer.tryConsume("[")) {
       // An extension.
-      StringBuilder name = new StringBuilder(tokenizer.consumeIdentifier());
+      final StringBuilder name =
+          new StringBuilder(tokenizer.consumeIdentifier());
       while (tokenizer.tryConsume(".")) {
-        name.append(".");
+        name.append('.');
         name.append(tokenizer.consumeIdentifier());
       }
 
@@ -844,7 +1099,7 @@ public final class TextFormat {
 
       field = extension.descriptor;
     } else {
-      String name = tokenizer.consumeIdentifier();
+      final String name = tokenizer.consumeIdentifier();
       field = type.findFieldByName(name);
 
       // Group names are expected to be capitalized as they appear in the
@@ -853,7 +1108,7 @@ public final class TextFormat {
       if (field == null) {
         // Explicitly specify US locale so that this code does not break when
         // executing in Turkey.
-        String lowerName = name.toLowerCase(Locale.US);
+        final String lowerName = name.toLowerCase(Locale.US);
         field = type.findFieldByName(lowerName);
         // If the case-insensitive match worked but the field is NOT a group,
         if (field != null && field.getType() != FieldDescriptor.Type.GROUP) {
@@ -878,7 +1133,7 @@ public final class TextFormat {
     if (field.getJavaType() == FieldDescriptor.JavaType.MESSAGE) {
       tokenizer.tryConsume(":");  // optional
 
-      String endToken;
+      final String endToken;
       if (tokenizer.tryConsume("<")) {
         endToken = ">";
       } else {
@@ -886,7 +1141,7 @@ public final class TextFormat {
         endToken = "}";
       }
 
-      Message.Builder subBuilder;
+      final Message.Builder subBuilder;
       if (extension == null) {
         subBuilder = builder.newBuilderForField(field);
       } else {
@@ -901,7 +1156,7 @@ public final class TextFormat {
         mergeField(tokenizer, extensionRegistry, subBuilder);
       }
 
-      value = subBuilder.build();
+      value = subBuilder.buildPartial();
 
     } else {
       tokenizer.consume(":");
@@ -949,19 +1204,19 @@ public final class TextFormat {
           value = tokenizer.consumeByteString();
           break;
 
-        case ENUM: {
-          EnumDescriptor enumType = field.getEnumType();
+        case ENUM:
+          final EnumDescriptor enumType = field.getEnumType();
 
           if (tokenizer.lookingAtInteger()) {
-            int number = tokenizer.consumeInt32();
+            final int number = tokenizer.consumeInt32();
             value = enumType.findValueByNumber(number);
             if (value == null) {
               throw tokenizer.parseExceptionPreviousToken(
                 "Enum type \"" + enumType.getFullName() +
-                "\" has no value with number " + number + ".");
+                "\" has no value with number " + number + '.');
             }
           } else {
-            String id = tokenizer.consumeIdentifier();
+            final String id = tokenizer.consumeIdentifier();
             value = enumType.findValueByName(id);
             if (value == null) {
               throw tokenizer.parseExceptionPreviousToken(
@@ -971,7 +1226,6 @@ public final class TextFormat {
           }
 
           break;
-        }
 
         case MESSAGE:
         case GROUP:
@@ -1000,10 +1254,10 @@ public final class TextFormat {
    * which no defined short-hand escape sequence is defined will be escaped
    * using 3-digit octal sequences.
    */
-  static String escapeBytes(ByteString input) {
-    StringBuilder builder = new StringBuilder(input.size());
+  static String escapeBytes(final ByteString input) {
+    final StringBuilder builder = new StringBuilder(input.size());
     for (int i = 0; i < input.size(); i++) {
-      byte b = input.byteAt(i);
+      final byte b = input.byteAt(i);
       switch (b) {
         // Java does not recognize \a or \v, apparently.
         case 0x07: builder.append("\\a" ); break;
@@ -1017,6 +1271,9 @@ public final class TextFormat {
         case '\'': builder.append("\\\'"); break;
         case '"' : builder.append("\\\""); break;
         default:
+          // Note:  Bytes with the high-order bit set should be escaped.  Since
+          //   bytes are signed, such bytes will compare less than 0x20, hence
+          //   the following line is correct.
           if (b >= 0x20) {
             builder.append((char) b);
           } else {
@@ -1036,27 +1293,37 @@ public final class TextFormat {
    * {@link #escapeBytes(ByteString)}.  Two-digit hex escapes (starting with
    * "\x") are also recognized.
    */
-  static ByteString unescapeBytes(CharSequence input)
-      throws InvalidEscapeSequence {
-    byte[] result = new byte[input.length()];
+  static ByteString unescapeBytes(final CharSequence charString)
+      throws InvalidEscapeSequenceException {
+    // First convert the Java character sequence to UTF-8 bytes.
+    ByteString input = ByteString.copyFromUtf8(charString.toString());
+    // Then unescape certain byte sequences introduced by ASCII '\\'.  The valid
+    // escapes can all be expressed with ASCII characters, so it is safe to
+    // operate on bytes here.
+    //
+    // Unescaping the input byte array will result in a byte sequence that's no
+    // longer than the input.  That's because each escape sequence is between
+    // two and four bytes long and stands for a single byte.
+    final byte[] result = new byte[input.size()];
     int pos = 0;
-    for (int i = 0; i < input.length(); i++) {
-      char c = input.charAt(i);
+    for (int i = 0; i < input.size(); i++) {
+      byte c = input.byteAt(i);
       if (c == '\\') {
-        if (i + 1 < input.length()) {
+        if (i + 1 < input.size()) {
           ++i;
-          c = input.charAt(i);
+          c = input.byteAt(i);
           if (isOctal(c)) {
             // Octal escape.
             int code = digitValue(c);
-            if (i + 1 < input.length() && isOctal(input.charAt(i + 1))) {
+            if (i + 1 < input.size() && isOctal(input.byteAt(i + 1))) {
               ++i;
-              code = code * 8 + digitValue(input.charAt(i));
+              code = code * 8 + digitValue(input.byteAt(i));
             }
-            if (i + 1 < input.length() && isOctal(input.charAt(i + 1))) {
+            if (i + 1 < input.size() && isOctal(input.byteAt(i + 1))) {
               ++i;
-              code = code * 8 + digitValue(input.charAt(i));
+              code = code * 8 + digitValue(input.byteAt(i));
             }
+            // TODO: Check that 0 <= code && code <= 0xFF.
             result[pos++] = (byte)code;
           } else {
             switch (c) {
@@ -1074,31 +1341,31 @@ public final class TextFormat {
               case 'x':
                 // hex escape
                 int code = 0;
-                if (i + 1 < input.length() && isHex(input.charAt(i + 1))) {
+                if (i + 1 < input.size() && isHex(input.byteAt(i + 1))) {
                   ++i;
-                  code = digitValue(input.charAt(i));
+                  code = digitValue(input.byteAt(i));
                 } else {
-                  throw new InvalidEscapeSequence(
-                    "Invalid escape sequence: '\\x' with no digits");
+                  throw new InvalidEscapeSequenceException(
+                      "Invalid escape sequence: '\\x' with no digits");
                 }
-                if (i + 1 < input.length() && isHex(input.charAt(i + 1))) {
+                if (i + 1 < input.size() && isHex(input.byteAt(i + 1))) {
                   ++i;
-                  code = code * 16 + digitValue(input.charAt(i));
+                  code = code * 16 + digitValue(input.byteAt(i));
                 }
                 result[pos++] = (byte)code;
                 break;
 
               default:
-                throw new InvalidEscapeSequence(
-                  "Invalid escape sequence: '\\" + c + "'");
+                throw new InvalidEscapeSequenceException(
+                    "Invalid escape sequence: '\\" + (char)c + '\'');
             }
           }
         } else {
-          throw new InvalidEscapeSequence(
-            "Invalid escape sequence: '\\' at end of string.");
+          throw new InvalidEscapeSequenceException(
+              "Invalid escape sequence: '\\' at end of string.");
         }
       } else {
-        result[pos++] = (byte)c;
+        result[pos++] = c;
       }
     }
 
@@ -1109,8 +1376,10 @@ public final class TextFormat {
    * Thrown by {@link TextFormat#unescapeBytes} and
    * {@link TextFormat#unescapeText} when an invalid escape sequence is seen.
    */
-  static class InvalidEscapeSequence extends IOException {
-    public InvalidEscapeSequence(String description) {
+  static class InvalidEscapeSequenceException extends IOException {
+    private static final long serialVersionUID = -8164033650142593304L;
+
+    InvalidEscapeSequenceException(final String description) {
       super(description);
     }
   }
@@ -1120,7 +1389,7 @@ public final class TextFormat {
    * Non-ASCII characters are first encoded as UTF-8, then each byte is escaped
    * individually as a 3-digit octal escape.  Yes, it's weird.
    */
-  static String escapeText(String input) {
+  static String escapeText(final String input) {
     return escapeBytes(ByteString.copyFromUtf8(input));
   }
 
@@ -1128,17 +1397,18 @@ public final class TextFormat {
    * Un-escape a text string as escaped using {@link #escapeText(String)}.
    * Two-digit hex escapes (starting with "\x") are also recognized.
    */
-  static String unescapeText(String input) throws InvalidEscapeSequence {
+  static String unescapeText(final String input)
+                             throws InvalidEscapeSequenceException {
     return unescapeBytes(input).toStringUtf8();
   }
 
   /** Is this an octal digit? */
-  private static boolean isOctal(char c) {
+  private static boolean isOctal(final byte c) {
     return '0' <= c && c <= '7';
   }
 
   /** Is this a hex digit? */
-  private static boolean isHex(char c) {
+  private static boolean isHex(final byte c) {
     return ('0' <= c && c <= '9') ||
            ('a' <= c && c <= 'f') ||
            ('A' <= c && c <= 'F');
@@ -1149,7 +1419,7 @@ public final class TextFormat {
    * numeric value.  This is like {@code Character.digit()} but we don't accept
    * non-ASCII digits.
    */
-  private static int digitValue(char c) {
+  private static int digitValue(final byte c) {
     if ('0' <= c && c <= '9') {
       return c - '0';
     } else if ('a' <= c && c <= 'z') {
@@ -1162,46 +1432,46 @@ public final class TextFormat {
   /**
    * Parse a 32-bit signed integer from the text.  Unlike the Java standard
    * {@code Integer.parseInt()}, this function recognizes the prefixes "0x"
-   * and "0" to signify hexidecimal and octal numbers, respectively.
+   * and "0" to signify hexadecimal and octal numbers, respectively.
    */
-  static int parseInt32(String text) throws NumberFormatException {
+  static int parseInt32(final String text) throws NumberFormatException {
     return (int) parseInteger(text, true, false);
   }
 
   /**
    * Parse a 32-bit unsigned integer from the text.  Unlike the Java standard
    * {@code Integer.parseInt()}, this function recognizes the prefixes "0x"
-   * and "0" to signify hexidecimal and octal numbers, respectively.  The
+   * and "0" to signify hexadecimal and octal numbers, respectively.  The
    * result is coerced to a (signed) {@code int} when returned since Java has
    * no unsigned integer type.
    */
-  static int parseUInt32(String text) throws NumberFormatException {
+  static int parseUInt32(final String text) throws NumberFormatException {
     return (int) parseInteger(text, false, false);
   }
 
   /**
    * Parse a 64-bit signed integer from the text.  Unlike the Java standard
    * {@code Integer.parseInt()}, this function recognizes the prefixes "0x"
-   * and "0" to signify hexidecimal and octal numbers, respectively.
+   * and "0" to signify hexadecimal and octal numbers, respectively.
    */
-  static long parseInt64(String text) throws NumberFormatException {
+  static long parseInt64(final String text) throws NumberFormatException {
     return parseInteger(text, true, true);
   }
 
   /**
    * Parse a 64-bit unsigned integer from the text.  Unlike the Java standard
    * {@code Integer.parseInt()}, this function recognizes the prefixes "0x"
-   * and "0" to signify hexidecimal and octal numbers, respectively.  The
+   * and "0" to signify hexadecimal and octal numbers, respectively.  The
    * result is coerced to a (signed) {@code long} when returned since Java has
    * no unsigned long type.
    */
-  static long parseUInt64(String text) throws NumberFormatException {
+  static long parseUInt64(final String text) throws NumberFormatException {
     return parseInteger(text, false, true);
   }
 
-  private static long parseInteger(String text,
-                                   boolean isSigned,
-                                   boolean isLong)
+  private static long parseInteger(final String text,
+                                   final boolean isSigned,
+                                   final boolean isLong)
                                    throws NumberFormatException {
     int pos = 0;
 
@@ -1222,7 +1492,7 @@ public final class TextFormat {
       radix = 8;
     }
 
-    String numberText = text.substring(pos);
+    final String numberText = text.substring(pos);
 
     long result = 0;
     if (numberText.length() < 16) {

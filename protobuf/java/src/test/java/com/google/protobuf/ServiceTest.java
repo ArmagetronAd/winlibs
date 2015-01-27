@@ -30,6 +30,12 @@
 
 package com.google.protobuf;
 
+import com.google.protobuf.Descriptors.FileDescriptor;
+import com.google.protobuf.Descriptors.MethodDescriptor;
+import google.protobuf.no_generic_services_test.UnittestNoGenericServices;
+import protobuf_unittest.MessageWithNoOuter;
+import protobuf_unittest.ServiceWithNoOuter;
+import protobuf_unittest.UnittestProto.TestAllTypes;
 import protobuf_unittest.UnittestProto.TestService;
 import protobuf_unittest.UnittestProto.FooRequest;
 import protobuf_unittest.UnittestProto.FooResponse;
@@ -39,6 +45,9 @@ import protobuf_unittest.UnittestProto.BarResponse;
 import org.easymock.classextension.EasyMock;
 import org.easymock.classextension.IMocksControl;
 import org.easymock.IArgumentMatcher;
+
+import java.util.HashSet;
+import java.util.Set;
 
 import junit.framework.TestCase;
 
@@ -56,6 +65,7 @@ public class ServiceTest extends TestCase {
   private final Descriptors.MethodDescriptor barDescriptor =
     TestService.getDescriptor().getMethods().get(1);
 
+  @Override
   protected void setUp() throws Exception {
     super.setUp();
     control = EasyMock.createStrictControl();
@@ -127,6 +137,138 @@ public class ServiceTest extends TestCase {
     control.verify();
   }
 
+  /** Tests generated blocking stubs. */
+  public void testBlockingStub() throws Exception {
+    FooRequest fooRequest = FooRequest.newBuilder().build();
+    BarRequest barRequest = BarRequest.newBuilder().build();
+    BlockingRpcChannel mockChannel =
+        control.createMock(BlockingRpcChannel.class);
+    TestService.BlockingInterface stub =
+        TestService.newBlockingStub(mockChannel);
+
+    FooResponse fooResponse = FooResponse.newBuilder().build();
+    BarResponse barResponse = BarResponse.newBuilder().build();
+
+    EasyMock.expect(mockChannel.callBlockingMethod(
+      EasyMock.same(fooDescriptor),
+      EasyMock.same(mockController),
+      EasyMock.same(fooRequest),
+      EasyMock.same(FooResponse.getDefaultInstance()))).andReturn(fooResponse);
+    EasyMock.expect(mockChannel.callBlockingMethod(
+      EasyMock.same(barDescriptor),
+      EasyMock.same(mockController),
+      EasyMock.same(barRequest),
+      EasyMock.same(BarResponse.getDefaultInstance()))).andReturn(barResponse);
+    control.replay();
+
+    assertSame(fooResponse, stub.foo(mockController, fooRequest));
+    assertSame(barResponse, stub.bar(mockController, barRequest));
+    control.verify();
+  }
+
+  public void testNewReflectiveService() {
+    ServiceWithNoOuter.Interface impl =
+        control.createMock(ServiceWithNoOuter.Interface.class);
+    RpcController controller = control.createMock(RpcController.class);
+    Service service = ServiceWithNoOuter.newReflectiveService(impl);
+
+    MethodDescriptor fooMethod =
+        ServiceWithNoOuter.getDescriptor().findMethodByName("Foo");
+    MessageWithNoOuter request = MessageWithNoOuter.getDefaultInstance();
+    RpcCallback<Message> callback = new RpcCallback<Message>() {
+      public void run(Message parameter) {
+        // No reason this should be run.
+        fail();
+      }
+    };
+    RpcCallback<TestAllTypes> specializedCallback =
+        RpcUtil.specializeCallback(callback);
+
+    impl.foo(EasyMock.same(controller), EasyMock.same(request),
+        EasyMock.same(specializedCallback));
+    EasyMock.expectLastCall();
+
+    control.replay();
+
+    service.callMethod(fooMethod, controller, request, callback);
+
+    control.verify();
+  }
+
+  public void testNewReflectiveBlockingService() throws ServiceException {
+    ServiceWithNoOuter.BlockingInterface impl =
+        control.createMock(ServiceWithNoOuter.BlockingInterface.class);
+    RpcController controller = control.createMock(RpcController.class);
+    BlockingService service =
+        ServiceWithNoOuter.newReflectiveBlockingService(impl);
+
+    MethodDescriptor fooMethod =
+        ServiceWithNoOuter.getDescriptor().findMethodByName("Foo");
+    MessageWithNoOuter request = MessageWithNoOuter.getDefaultInstance();
+
+    TestAllTypes expectedResponse = TestAllTypes.getDefaultInstance();
+    EasyMock.expect(impl.foo(EasyMock.same(controller), EasyMock.same(request)))
+        .andReturn(expectedResponse);
+
+    control.replay();
+
+    Message response =
+        service.callBlockingMethod(fooMethod, controller, request);
+    assertEquals(expectedResponse, response);
+
+    control.verify();
+  }
+
+  public void testNoGenericServices() throws Exception {
+    // Non-services should be usable.
+    UnittestNoGenericServices.TestMessage message =
+      UnittestNoGenericServices.TestMessage.newBuilder()
+        .setA(123)
+        .setExtension(UnittestNoGenericServices.testExtension, 456)
+        .build();
+    assertEquals(123, message.getA());
+    assertEquals(1, UnittestNoGenericServices.TestEnum.FOO.getNumber());
+
+    // Build a list of the class names nested in UnittestNoGenericServices.
+    String outerName = "google.protobuf.no_generic_services_test." +
+                       "UnittestNoGenericServices";
+    Class<?> outerClass = Class.forName(outerName);
+
+    Set<String> innerClassNames = new HashSet<String>();
+    for (Class<?> innerClass : outerClass.getClasses()) {
+      String fullName = innerClass.getName();
+      // Figure out the unqualified name of the inner class.
+      // Note:  Surprisingly, the full name of an inner class will be separated
+      //   from the outer class name by a '$' rather than a '.'.  This is not
+      //   mentioned in the documentation for java.lang.Class.  I don't want to
+      //   make assumptions, so I'm just going to accept any character as the
+      //   separator.
+      assertTrue(fullName.startsWith(outerName));
+
+      if (!Service.class.isAssignableFrom(innerClass) &&
+          !Message.class.isAssignableFrom(innerClass) &&
+          !ProtocolMessageEnum.class.isAssignableFrom(innerClass)) {
+        // Ignore any classes not generated by the base code generator.
+        continue;
+      }
+
+      innerClassNames.add(fullName.substring(outerName.length() + 1));
+    }
+
+    // No service class should have been generated.
+    assertTrue(innerClassNames.contains("TestMessage"));
+    assertTrue(innerClassNames.contains("TestEnum"));
+    assertFalse(innerClassNames.contains("TestService"));
+
+    // But descriptors are there.
+    FileDescriptor file = UnittestNoGenericServices.getDescriptor();
+    assertEquals(1, file.getServices().size());
+    assertEquals("TestService", file.getServices().get(0).getName());
+    assertEquals(1, file.getServices().get(0).getMethods().size());
+    assertEquals("Foo",
+        file.getServices().get(0).getMethods().get(0).getName());
+  }
+
   // =================================================================
 
   /**
@@ -135,7 +277,7 @@ public class ServiceTest extends TestCase {
    * In other words, c wraps the given callback.
    */
   private <Type extends Message> RpcCallback<Type> wrapsCallback(
-      MockCallback callback) {
+      MockCallback<?> callback) {
     EasyMock.reportMatcher(new WrapsCallback(callback));
     return null;
   }
@@ -153,9 +295,9 @@ public class ServiceTest extends TestCase {
 
   /** Implementation of the wrapsCallback() argument matcher. */
   private static class WrapsCallback implements IArgumentMatcher {
-    private MockCallback callback;
+    private MockCallback<?> callback;
 
-    public WrapsCallback(MockCallback callback) {
+    public WrapsCallback(MockCallback<?> callback) {
       this.callback = callback;
     }
 

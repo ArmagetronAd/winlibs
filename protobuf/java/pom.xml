@@ -3,16 +3,15 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <!-- remove the reference to the parent until the google repo is synced with central -->
-  <!--<parent>
+  <parent>
     <groupId>com.google</groupId>
     <artifactId>google</artifactId>
     <version>1</version>
-  </parent>-->
+  </parent>
   <groupId>com.google.protobuf</groupId>
   <artifactId>protobuf-java</artifactId>
-  <version>2.0.3</version>
-  <packaging>jar</packaging>
+  <version>2.5.0</version>
+  <packaging>bundle</packaging>
   <name>Protocol Buffer Java API</name>
   <description>
     Protocol Buffers are a way of encoding structured data in an efficient yet
@@ -33,20 +32,6 @@
       scm:svn:http://protobuf.googlecode.com/svn/trunk/
     </connection>
   </scm>
-  <!-- this is temporarily copied from the parent pom.  remove this section when that is used -->
-  <distributionManagement>
-    <repository>
-      <id>google-maven-repository</id>
-      <name>Google Maven Repository</name>
-      <url>https://google-maven-repository.googlecode.com/svn/trunk/repository/</url>
-    </repository>
-    <snapshotRepository>
-      <id>google-maven-snapshot-repository</id>
-      <name>Google Maven Snapshot Repository</name>
-      <url>https://google-maven-repository.googlecode.com/svn/trunk/snapshot-repository/</url>
-      <uniqueVersion>true</uniqueVersion>
-    </snapshotRepository>
-  </distributionManagement>
   <dependencies>
     <dependency>
       <groupId>junit</groupId>
@@ -117,13 +102,26 @@
                   <arg value="--proto_path=src/test/java" />
                   <arg value="../src/google/protobuf/unittest.proto" />
                   <arg value="../src/google/protobuf/unittest_import.proto" />
+                  <arg value="../src/google/protobuf/unittest_import_public.proto" />
                   <arg value="../src/google/protobuf/unittest_mset.proto" />
                   <arg
                     value="src/test/java/com/google/protobuf/multiple_files_test.proto" />
+                  <arg value="src/test/java/com/google/protobuf/nested_builders_test.proto" />
+                  <arg value="src/test/java/com/google/protobuf/nested_extension.proto" />
+                  <arg value="src/test/java/com/google/protobuf/nested_extension_lite.proto" />
+                  <arg value="src/test/java/com/google/protobuf/non_nested_extension.proto" />
+                  <arg value="src/test/java/com/google/protobuf/non_nested_extension_lite.proto" />
+                  <arg value="src/test/java/com/google/protobuf/test_bad_identifiers.proto" />
                   <arg
                     value="../src/google/protobuf/unittest_optimize_for.proto" />
                   <arg
                     value="../src/google/protobuf/unittest_custom_options.proto" />
+                  <arg value="../src/google/protobuf/unittest_lite.proto" />
+                  <arg value="../src/google/protobuf/unittest_import_lite.proto" />
+                  <arg value="../src/google/protobuf/unittest_import_public_lite.proto" />
+                  <arg value="../src/google/protobuf/unittest_lite_imports_nonlite.proto" />
+                  <arg value="../src/google/protobuf/unittest_enormous_descriptor.proto" />
+                  <arg value="../src/google/protobuf/unittest_no_generic_services.proto" />
                 </exec>
               </tasks>
               <testSourceRoot>target/generated-test-sources</testSourceRoot>
@@ -134,6 +132,74 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.apache.felix</groupId>
+        <artifactId>maven-bundle-plugin</artifactId>
+        <extensions>true</extensions>
+        <configuration>
+          <instructions>
+            <Export-Package>*</Export-Package>
+          </instructions>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>lite</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+              <includes>
+                <include>**/AbstractMessageLite.java</include>
+                <include>**/ByteString.java</include>
+                <include>**/CodedInputStream.java</include>
+                <include>**/CodedOutputStream.java</include>
+                <include>**/ExtensionRegistryLite.java</include>
+                <include>**/FieldSet.java</include>
+                <include>**/GeneratedMessageLite.java</include>
+                <include>**/Internal.java</include>
+                <include>**/InvalidProtocolBufferException.java</include>
+                <include>**/LazyStringArrayList.java</include>
+                <include>**/LazyStringList.java</include>
+                <include>**/MessageLite.java</include>
+                <include>**/MessageLiteOrBuilder.java</include>
+                <include>**/SmallSortedMap.java</include>
+                <include>**/UninitializedMessageException.java</include>
+                <include>**/UnmodifiableLazyStringList.java</include>
+                <include>**/WireFormat.java</include>
+                <include>**/Parser.java</include>
+                <include>**/AbstractParser.java</include>
+                <include>**/BoundedByteString.java</include>
+                <include>**/LiteralByteString.java</include>
+                <include>**/RopeByteString.java</include>
+                <include>**/Utf8.java</include>
+                <include>**/LazyField.java</include>
+              </includes>
+              <testIncludes>
+                <testInclude>**/LiteTest.java</testInclude>
+                <testInclude>**/*Lite.java</testInclude>
+              </testIncludes>
+            </configuration>
+          </plugin>
+          <plugin>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <includes>
+                <include>**/LiteTest.java</include>
+              </includes>
+            </configuration>
+          </plugin>
+          <plugin>
+            <artifactId>maven-jar-plugin</artifactId>
+            <configuration>
+              <classifier>lite</classifier>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

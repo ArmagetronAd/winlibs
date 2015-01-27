@@ -39,7 +39,7 @@ public final class RpcUtil {
   private RpcUtil() {}
 
   /**
-   * Take an {@code RcpCallabck<Message>} and convert it to an
+   * Take an {@code RpcCallback<Message>} and convert it to an
    * {@code RpcCallback} accepting a specific message type.  This is always
    * type-safe (parameter type contravariance).
    */
@@ -58,8 +58,8 @@ public final class RpcUtil {
   }
 
   /**
-   * Take an {@code RcpCallabck} accepting a specific message type and convert
-   * it to an {@code RcpCallabck<Message>}.  The generalized callback will
+   * Take an {@code RpcCallback} accepting a specific message type and convert
+   * it to an {@code RpcCallback<Message>}.  The generalized callback will
    * accept any message object which has the same descriptor, and will convert
    * it to the correct class before calling the original callback.  However,
    * if the generalized callback is given a message with a different descriptor,
@@ -71,11 +71,11 @@ public final class RpcUtil {
       final Class<Type> originalClass,
       final Type defaultInstance) {
     return new RpcCallback<Message>() {
-      public void run(Message parameter) {
+      public void run(final Message parameter) {
         Type typedParameter;
         try {
           typedParameter = originalClass.cast(parameter);
-        } catch (ClassCastException e) {
+        } catch (ClassCastException ignored) {
           typedParameter = copyAsType(defaultInstance, parameter);
         }
         originalCallback.run(typedParameter);
@@ -90,7 +90,7 @@ public final class RpcUtil {
    */
   @SuppressWarnings("unchecked")
   private static <Type extends Message> Type copyAsType(
-      Type typeDefaultInstance, Message source) {
+      final Type typeDefaultInstance, final Message source) {
     return (Type)typeDefaultInstance.newBuilderForType()
                                     .mergeFrom(source)
                                     .build();
@@ -106,8 +106,9 @@ public final class RpcUtil {
     RpcCallback<ParameterType> newOneTimeCallback(
       final RpcCallback<ParameterType> originalCallback) {
     return new RpcCallback<ParameterType>() {
-      boolean alreadyCalled = false;
-      public void run(ParameterType parameter) {
+      private boolean alreadyCalled = false;
+
+      public void run(final ParameterType parameter) {
         synchronized(this) {
           if (alreadyCalled) {
             throw new AlreadyCalledException();
@@ -124,6 +125,8 @@ public final class RpcUtil {
    * Exception thrown when a one-time callback is called more than once.
    */
   public static final class AlreadyCalledException extends RuntimeException {
+    private static final long serialVersionUID = 5469741279507848266L;
+
     public AlreadyCalledException() {
       super("This RpcCallback was already called and cannot be called " +
             "multiple times.");

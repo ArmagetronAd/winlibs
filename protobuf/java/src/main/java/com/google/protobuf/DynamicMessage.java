@@ -35,6 +35,7 @@ import com.google.protobuf.Descriptors.FieldDescriptor;
 
 import java.io.InputStream;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -45,14 +46,14 @@ import java.util.Map;
  */
 public final class DynamicMessage extends AbstractMessage {
   private final Descriptor type;
-  private final FieldSet fields;
+  private final FieldSet<FieldDescriptor> fields;
   private final UnknownFieldSet unknownFields;
   private int memoizedSize = -1;
 
   /**
    * Construct a {@code DynamicMessage} using the given {@code FieldSet}.
    */
-  private DynamicMessage(Descriptor type, FieldSet fields,
+  private DynamicMessage(Descriptor type, FieldSet<FieldDescriptor> fields,
                          UnknownFieldSet unknownFields) {
     this.type = type;
     this.fields = fields;
@@ -64,7 +65,7 @@ public final class DynamicMessage extends AbstractMessage {
    * given type.
    */
   public static DynamicMessage getDefaultInstance(Descriptor type) {
-    return new DynamicMessage(type, FieldSet.emptySet(),
+    return new DynamicMessage(type, FieldSet.<FieldDescriptor>emptySet(),
                               UnknownFieldSet.getDefaultInstance());
   }
 
@@ -160,7 +161,13 @@ public final class DynamicMessage extends AbstractMessage {
     verifyContainingType(field);
     Object result = fields.getField(field);
     if (result == null) {
-      result = getDefaultInstance(field.getMessageType());
+      if (field.isRepeated()) {
+        result = Collections.emptyList();
+      } else if (field.getJavaType() == FieldDescriptor.JavaType.MESSAGE) {
+        result = getDefaultInstance(field.getMessageType());
+      } else {
+        result = field.getDefaultValue();
+      }
     }
     return result;
   }
@@ -179,27 +186,47 @@ public final class DynamicMessage extends AbstractMessage {
     return unknownFields;
   }
 
-  public boolean isInitialized() {
-    return fields.isInitialized(type);
+  private static boolean isInitialized(Descriptor type,
+                                       FieldSet<FieldDescriptor> fields) {
+    // Check that all required fields are present.
+    for (final FieldDescriptor field : type.getFields()) {
+      if (field.isRequired()) {
+        if (!fields.hasField(field)) {
+          return false;
+        }
+      }
+    }
+
+    // Check that embedded messages are initialized.
+    return fields.isInitialized();
   }
 
+  @Override
+  public boolean isInitialized() {
+    return isInitialized(type, fields);
+  }
+
+  @Override
   public void writeTo(CodedOutputStream output) throws IOException {
-    fields.writeTo(output);
     if (type.getOptions().getMessageSetWireFormat()) {
+      fields.writeMessageSetTo(output);
       unknownFields.writeAsMessageSetTo(output);
     } else {
+      fields.writeTo(output);
       unknownFields.writeTo(output);
     }
   }
 
+  @Override
   public int getSerializedSize() {
     int size = memoizedSize;
     if (size != -1) return size;
 
-    size = fields.getSerializedSize();
     if (type.getOptions().getMessageSetWireFormat()) {
+      size = fields.getMessageSetSerializedSize();
       size += unknownFields.getSerializedSizeAsMessageSet();
     } else {
+      size = fields.getSerializedSize();
       size += unknownFields.getSerializedSize();
     }
 
@@ -209,6 +236,30 @@ public final class DynamicMessage extends AbstractMessage {
 
   public Builder newBuilderForType() {
     return new Builder(type);
+  }
+
+  public Builder toBuilder() {
+    return newBuilderForType().mergeFrom(this);
+  }
+
+  public Parser<DynamicMessage> getParserForType() {
+    return new AbstractParser<DynamicMessage>() {
+      public DynamicMessage parsePartialFrom(
+          CodedInputStream input,
+          ExtensionRegistryLite extensionRegistry)
+          throws InvalidProtocolBufferException {
+        Builder builder = newBuilder(type);
+        try {
+          builder.mergeFrom(input, extensionRegistry);
+        } catch (InvalidProtocolBufferException e) {
+          throw e.setUnfinishedMessage(builder.buildPartial());
+        } catch (IOException e) {
+          throw new InvalidProtocolBufferException(e.getMessage())
+              .setUnfinishedMessage(builder.buildPartial());
+        }
+        return builder.buildPartial();
+      }
+    };
   }
 
   /** Verifies that the field is a field of this message. */
@@ -226,7 +277,7 @@ public final class DynamicMessage extends AbstractMessage {
    */
   public static final class Builder extends AbstractMessage.Builder<Builder> {
     private final Descriptor type;
-    private FieldSet fields;
+    private FieldSet<FieldDescriptor> fields;
     private UnknownFieldSet unknownFields;
 
     /** Construct a {@code Builder} for the given type. */
@@ -239,24 +290,38 @@ public final class DynamicMessage extends AbstractMessage {
     // ---------------------------------------------------------------
     // Implementation of Message.Builder interface.
 
+    @Override
     public Builder clear() {
-      fields.clear();
+      if (fields.isImmutable()) {
+        fields = FieldSet.newFieldSet();
+      } else {
+        fields.clear();
+      }
+      unknownFields = UnknownFieldSet.getDefaultInstance();
       return this;
     }
 
+    @Override
     public Builder mergeFrom(Message other) {
-      if (other.getDescriptorForType() != type) {
-        throw new IllegalArgumentException(
-          "mergeFrom(Message) can only merge messages of the same type.");
+      if (other instanceof DynamicMessage) {
+        // This should be somewhat faster than calling super.mergeFrom().
+        DynamicMessage otherDynamicMessage = (DynamicMessage) other;
+        if (otherDynamicMessage.type != type) {
+          throw new IllegalArgumentException(
+            "mergeFrom(Message) can only merge messages of the same type.");
+        }
+        ensureIsMutable();
+        fields.mergeFrom(otherDynamicMessage.fields);
+        mergeUnknownFields(otherDynamicMessage.unknownFields);
+        return this;
+      } else {
+        return super.mergeFrom(other);
       }
-
-      fields.mergeFrom(other);
-      return this;
     }
 
     public DynamicMessage build() {
       if (!isInitialized()) {
-        throw new UninitializedMessageException(
+        throw newUninitializedMessageException(
           new DynamicMessage(type, fields, unknownFields));
       }
       return buildPartial();
@@ -269,7 +334,7 @@ public final class DynamicMessage extends AbstractMessage {
      */
     private DynamicMessage buildParsed() throws InvalidProtocolBufferException {
       if (!isInitialized()) {
-        throw new UninitializedMessageException(
+        throw newUninitializedMessageException(
             new DynamicMessage(type, fields, unknownFields))
           .asInvalidProtocolBufferException();
       }
@@ -280,29 +345,19 @@ public final class DynamicMessage extends AbstractMessage {
       fields.makeImmutable();
       DynamicMessage result =
         new DynamicMessage(type, fields, unknownFields);
-      fields = null;
-      unknownFields = null;
       return result;
     }
 
+    @Override
     public Builder clone() {
       Builder result = new Builder(type);
       result.fields.mergeFrom(fields);
+      result.mergeUnknownFields(unknownFields);
       return result;
     }
 
     public boolean isInitialized() {
-      return fields.isInitialized(type);
-    }
-
-    public Builder mergeFrom(CodedInputStream input,
-                             ExtensionRegistry extensionRegistry)
-                             throws IOException {
-      UnknownFieldSet.Builder unknownFieldsBuilder =
-        UnknownFieldSet.newBuilder(unknownFields);
-      fields.mergeFrom(input, unknownFieldsBuilder, extensionRegistry, this);
-      unknownFields = unknownFieldsBuilder.build();
-      return this;
+      return DynamicMessage.isInitialized(type, fields);
     }
 
     public Descriptor getDescriptorForType() {
@@ -337,19 +392,25 @@ public final class DynamicMessage extends AbstractMessage {
       verifyContainingType(field);
       Object result = fields.getField(field);
       if (result == null) {
-        result = getDefaultInstance(field.getMessageType());
+        if (field.getJavaType() == FieldDescriptor.JavaType.MESSAGE) {
+          result = getDefaultInstance(field.getMessageType());
+        } else {
+          result = field.getDefaultValue();
+        }
       }
       return result;
     }
 
     public Builder setField(FieldDescriptor field, Object value) {
       verifyContainingType(field);
+      ensureIsMutable();
       fields.setField(field, value);
       return this;
     }
 
     public Builder clearField(FieldDescriptor field) {
       verifyContainingType(field);
+      ensureIsMutable();
       fields.clearField(field);
       return this;
     }
@@ -367,12 +428,14 @@ public final class DynamicMessage extends AbstractMessage {
     public Builder setRepeatedField(FieldDescriptor field,
                                     int index, Object value) {
       verifyContainingType(field);
+      ensureIsMutable();
       fields.setRepeatedField(field, index, value);
       return this;
     }
 
     public Builder addRepeatedField(FieldDescriptor field, Object value) {
       verifyContainingType(field);
+      ensureIsMutable();
       fields.addRepeatedField(field, value);
       return this;
     }
@@ -386,6 +449,7 @@ public final class DynamicMessage extends AbstractMessage {
       return this;
     }
 
+    @Override
     public Builder mergeUnknownFields(UnknownFieldSet unknownFields) {
       this.unknownFields =
         UnknownFieldSet.newBuilder(this.unknownFields)
@@ -400,6 +464,19 @@ public final class DynamicMessage extends AbstractMessage {
         throw new IllegalArgumentException(
           "FieldDescriptor does not match message type.");
       }
+    }
+
+    private void ensureIsMutable() {
+      if (fields.isImmutable()) {
+        fields = fields.clone();
+      }
+    }
+
+    @Override
+    public com.google.protobuf.Message.Builder getFieldBuilder(FieldDescriptor field) {
+      // TODO(xiangl): need implementation for dynamic message
+      throw new UnsupportedOperationException(
+        "getFieldBuilder() called on a dynamic message type.");
     }
   }
 }

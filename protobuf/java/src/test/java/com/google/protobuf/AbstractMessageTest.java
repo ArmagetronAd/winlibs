@@ -30,13 +30,16 @@
 
 package com.google.protobuf;
 
+import com.google.protobuf.Descriptors.FieldDescriptor;
+import protobuf_unittest.UnittestOptimizeFor.TestOptimizedForSize;
 import protobuf_unittest.UnittestProto;
 import protobuf_unittest.UnittestProto.ForeignMessage;
-import protobuf_unittest.UnittestProto.TestAllTypes;
 import protobuf_unittest.UnittestProto.TestAllExtensions;
+import protobuf_unittest.UnittestProto.TestAllTypes;
+import protobuf_unittest.UnittestProto.TestPackedTypes;
 import protobuf_unittest.UnittestProto.TestRequired;
 import protobuf_unittest.UnittestProto.TestRequiredForeign;
-import protobuf_unittest.UnittestOptimizeFor.TestOptimizedForSize;
+import protobuf_unittest.UnittestProto.TestUnpackedTypes;
 
 import junit.framework.TestCase;
 
@@ -90,6 +93,9 @@ public class AbstractMessageTest extends TestCase {
     }
     public Builder newBuilderForType() {
       return new Builder(wrappedMessage.newBuilderForType());
+    }
+    public Builder toBuilder() {
+      return new Builder(wrappedMessage.toBuilder());
     }
 
     static class Builder extends AbstractMessage.Builder<Builder> {
@@ -162,6 +168,13 @@ public class AbstractMessageTest extends TestCase {
         wrappedBuilder.setUnknownFields(unknownFields);
         return this;
       }
+      @Override
+      public Message.Builder getFieldBuilder(FieldDescriptor field) {
+        return wrappedBuilder.getFieldBuilder(field);
+      }
+    }
+    public Parser<? extends Message> getParserForType() {
+      return wrappedMessage.getParserForType();
     }
   }
 
@@ -215,6 +228,90 @@ public class AbstractMessageTest extends TestCase {
     TestUtil.assertAllFieldsSet((TestAllTypes) message.wrappedMessage);
   }
 
+  public void testParsingUninitialized() throws Exception {
+    TestRequiredForeign.Builder builder = TestRequiredForeign.newBuilder();
+    builder.getOptionalMessageBuilder().setDummy2(10);
+    ByteString bytes = builder.buildPartial().toByteString();
+    Message.Builder abstractMessageBuilder =
+        new AbstractMessageWrapper.Builder(TestRequiredForeign.newBuilder());
+    // mergeFrom() should not throw initialization error.
+    abstractMessageBuilder.mergeFrom(bytes).buildPartial();
+    try {
+      abstractMessageBuilder.mergeFrom(bytes).build();
+      fail();
+    } catch (UninitializedMessageException ex) {
+      // pass
+    }
+
+    // test DynamicMessage directly.
+    Message.Builder dynamicMessageBuilder = DynamicMessage.newBuilder(
+        TestRequiredForeign.getDescriptor());
+    // mergeFrom() should not throw initialization error.
+    dynamicMessageBuilder.mergeFrom(bytes).buildPartial();
+    try {
+      dynamicMessageBuilder.mergeFrom(bytes).build();
+      fail();
+    } catch (UninitializedMessageException ex) {
+      // pass
+    }
+  }
+
+  public void testPackedSerialization() throws Exception {
+    Message abstractMessage =
+        new AbstractMessageWrapper(TestUtil.getPackedSet());
+
+    TestUtil.assertPackedFieldsSet(
+      TestPackedTypes.parseFrom(abstractMessage.toByteString()));
+
+    assertEquals(TestUtil.getPackedSet().toByteString(),
+                 abstractMessage.toByteString());
+  }
+
+  public void testPackedParsing() throws Exception {
+    AbstractMessageWrapper.Builder builder =
+      new AbstractMessageWrapper.Builder(TestPackedTypes.newBuilder());
+    AbstractMessageWrapper message =
+      builder.mergeFrom(TestUtil.getPackedSet().toByteString()).build();
+    TestUtil.assertPackedFieldsSet((TestPackedTypes) message.wrappedMessage);
+  }
+
+  public void testUnpackedSerialization() throws Exception {
+    Message abstractMessage =
+      new AbstractMessageWrapper(TestUtil.getUnpackedSet());
+
+    TestUtil.assertUnpackedFieldsSet(
+      TestUnpackedTypes.parseFrom(abstractMessage.toByteString()));
+
+    assertEquals(TestUtil.getUnpackedSet().toByteString(),
+                 abstractMessage.toByteString());
+  }
+
+  public void testParsePackedToUnpacked() throws Exception {
+    AbstractMessageWrapper.Builder builder =
+      new AbstractMessageWrapper.Builder(TestUnpackedTypes.newBuilder());
+    AbstractMessageWrapper message =
+      builder.mergeFrom(TestUtil.getPackedSet().toByteString()).build();
+    TestUtil.assertUnpackedFieldsSet(
+      (TestUnpackedTypes) message.wrappedMessage);
+  }
+
+  public void testParseUnpackedToPacked() throws Exception {
+    AbstractMessageWrapper.Builder builder =
+      new AbstractMessageWrapper.Builder(TestPackedTypes.newBuilder());
+    AbstractMessageWrapper message =
+      builder.mergeFrom(TestUtil.getUnpackedSet().toByteString()).build();
+    TestUtil.assertPackedFieldsSet((TestPackedTypes) message.wrappedMessage);
+  }
+
+  public void testUnpackedParsing() throws Exception {
+    AbstractMessageWrapper.Builder builder =
+      new AbstractMessageWrapper.Builder(TestUnpackedTypes.newBuilder());
+    AbstractMessageWrapper message =
+      builder.mergeFrom(TestUtil.getUnpackedSet().toByteString()).build();
+    TestUtil.assertUnpackedFieldsSet(
+      (TestUnpackedTypes) message.wrappedMessage);
+  }
+
   public void testOptimizedForSize() throws Exception {
     // We're mostly only checking that this class was compiled successfully.
     TestOptimizedForSize message =
@@ -237,12 +334,16 @@ public class AbstractMessageTest extends TestCase {
       new AbstractMessageWrapper.Builder(builder);
 
     assertFalse(abstractBuilder.isInitialized());
+    assertEquals("a, b, c", abstractBuilder.getInitializationErrorString());
     builder.setA(1);
     assertFalse(abstractBuilder.isInitialized());
+    assertEquals("b, c", abstractBuilder.getInitializationErrorString());
     builder.setB(1);
     assertFalse(abstractBuilder.isInitialized());
+    assertEquals("c", abstractBuilder.getInitializationErrorString());
     builder.setC(1);
     assertTrue(abstractBuilder.isInitialized());
+    assertEquals("", abstractBuilder.getInitializationErrorString());
   }
 
   public void testForeignIsInitialized() throws Exception {
@@ -251,18 +352,27 @@ public class AbstractMessageTest extends TestCase {
       new AbstractMessageWrapper.Builder(builder);
 
     assertTrue(abstractBuilder.isInitialized());
+    assertEquals("", abstractBuilder.getInitializationErrorString());
 
     builder.setOptionalMessage(TEST_REQUIRED_UNINITIALIZED);
     assertFalse(abstractBuilder.isInitialized());
+    assertEquals(
+        "optional_message.a, optional_message.b, optional_message.c",
+        abstractBuilder.getInitializationErrorString());
 
     builder.setOptionalMessage(TEST_REQUIRED_INITIALIZED);
     assertTrue(abstractBuilder.isInitialized());
+    assertEquals("", abstractBuilder.getInitializationErrorString());
 
     builder.addRepeatedMessage(TEST_REQUIRED_UNINITIALIZED);
     assertFalse(abstractBuilder.isInitialized());
+    assertEquals(
+        "repeated_message[0].a, repeated_message[0].b, repeated_message[0].c",
+        abstractBuilder.getInitializationErrorString());
 
     builder.setRepeatedMessage(0, TEST_REQUIRED_INITIALIZED);
     assertTrue(abstractBuilder.isInitialized());
+    assertEquals("", abstractBuilder.getInitializationErrorString());
   }
 
   // -----------------------------------------------------------------
@@ -305,8 +415,8 @@ public class AbstractMessageTest extends TestCase {
 
   // -----------------------------------------------------------------
   // Tests for equals and hashCode
-  
-  public void testEqualsAndHashCode() {
+
+  public void testEqualsAndHashCode() throws Exception {
     TestAllTypes a = TestUtil.getAllSet();
     TestAllTypes b = TestAllTypes.newBuilder().build();
     TestAllTypes c = TestAllTypes.newBuilder(b).addRepeatedString("x").build();
@@ -314,14 +424,14 @@ public class AbstractMessageTest extends TestCase {
     TestAllExtensions e = TestUtil.getAllExtensionsSet();
     TestAllExtensions f = TestAllExtensions.newBuilder(e)
         .addExtension(UnittestProto.repeatedInt32Extension, 999).build();
-      
+
     checkEqualsIsConsistent(a);
     checkEqualsIsConsistent(b);
     checkEqualsIsConsistent(c);
     checkEqualsIsConsistent(d);
     checkEqualsIsConsistent(e);
     checkEqualsIsConsistent(f);
-    
+
     checkNotEqual(a, b);
     checkNotEqual(a, c);
     checkNotEqual(a, d);
@@ -341,25 +451,48 @@ public class AbstractMessageTest extends TestCase {
     checkNotEqual(d, f);
 
     checkNotEqual(e, f);
+
+    // Deserializing into the TestEmptyMessage such that every field
+    // is an {@link UnknownFieldSet.Field}.
+    UnittestProto.TestEmptyMessage eUnknownFields =
+        UnittestProto.TestEmptyMessage.parseFrom(e.toByteArray());
+    UnittestProto.TestEmptyMessage fUnknownFields =
+        UnittestProto.TestEmptyMessage.parseFrom(f.toByteArray());
+    checkNotEqual(eUnknownFields, fUnknownFields);
+    checkEqualsIsConsistent(eUnknownFields);
+    checkEqualsIsConsistent(fUnknownFields);
+
+    // Subsequent reconstitutions should be identical
+    UnittestProto.TestEmptyMessage eUnknownFields2 =
+        UnittestProto.TestEmptyMessage.parseFrom(e.toByteArray());
+    checkEqualsIsConsistent(eUnknownFields, eUnknownFields2);
   }
-  
+
+
   /**
-   * Asserts that the given protos are equal and have the same hash code.
+   * Asserts that the given proto has symmetric equals and hashCode methods.
    */
   private void checkEqualsIsConsistent(Message message) {
     // Object should be equal to itself.
     assertEquals(message, message);
-    
+
     // Object should be equal to a dynamic copy of itself.
     DynamicMessage dynamic = DynamicMessage.newBuilder(message).build();
-    assertEquals(message, dynamic);
-    assertEquals(dynamic, message);
-    assertEquals(dynamic.hashCode(), message.hashCode());
+    checkEqualsIsConsistent(message, dynamic);
+  }
+
+  /**
+   * Asserts that the given protos are equal and have the same hash code.
+   */
+  private void checkEqualsIsConsistent(Message message1, Message message2) {
+    assertEquals(message1, message2);
+    assertEquals(message2, message1);
+    assertEquals(message2.hashCode(), message1.hashCode());
   }
 
   /**
    * Asserts that the given protos are not equal and have different hash codes.
-   * 
+   *
    * @warning It's valid for non-equal objects to have the same hash code, so
    *   this test is stricter than it needs to be. However, this should happen
    *   relatively rarely.
