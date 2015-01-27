@@ -9,14 +9,16 @@ Compiling and Installing
 1) Open protobuf.sln in Microsoft Visual Studio.
 2) Choose "Debug" or "Release" configuration as desired.*
 3) From the Build menu, choose "Build Solution".  Wait for compiling to finish.
-4) From a command shell, run tests.exe and check that all tests pass.
+4) From a command shell, run tests.exe and lite-test.exe and check that all
+   tests pass.
 5) Run extract_includes.bat to copy all the public headers into a separate
    "include" directory (under the top-level package directory).
 6) Copy the contents of the include directory to wherever you want to put
    headers.
 7) Copy protoc.exe wherever you put build tools (probably somewhere in your
    PATH).
-8) Copy libprotobuf.lib and libprotoc.lib wherever you put libraries.
+8) Copy libprotobuf.lib, libprotobuf-lite.lib, and libprotoc.lib wherever you
+   put libraries.
 
 * To avoid conflicts between the MSVC debug and release runtime libraries, when
   compiling a debug build of your application, you may need to link against a
@@ -34,7 +36,8 @@ build libprotobuf and libprotoc as DLLs if you really want.  To do this,
 do the following:
 
   1) Open protobuf.sln in MSVC.
-  2) For each of the projects libprotobuf and libprotoc, do the following:
+  2) For each of the projects libprotobuf, libprotobuf-lite, and libprotoc, do
+     the following:
     2a) Right-click the project and choose "properties".
     2b) From the side bar, choose "General", under "Configuration Properties".
     2c) Change the "Configuration Type" to "Dynamic Library (.dll)".
@@ -53,6 +56,31 @@ If your project is itself a DLL intended for use by third-party software, we
 recommend that you do NOT expose protocol buffer objects in your library's
 public interface, and that you statically link protocol buffers into your
 library.
+
+ZLib support
+============
+
+If you want to include GzipInputStream and GzipOutputStream
+(google/protobuf/io/gzip_stream.h) in libprotoc, you will need to do a few
+additional steps:
+
+1) Obtain a copy of the zlib library.  The pre-compiled DLL at zlib.net works.
+2) Make sure zlib's two headers are in your include path and that the .lib file
+   is in your library path.  You could place all three files directly into the
+   vsproject directory to compile libprotobuf, but they need to be visible to
+   your own project as well, so you should probably just put them into the
+   VC shared icnlude and library directories.
+3) Right-click on the "tests" project and choose "properties".  Navigate the
+   sidebar to "Configuration Properties" -> "Linker" -> "Input".
+4) Under "Additional Dependencies", add the name of the zlib .lib file (e.g.
+   zdll.lib).  Make sure to update both the Debug and Release configurations.
+5) If you are compiling libprotobuf and libprotoc as DLLs (see previous
+   section), repeat steps 2 and 3 for the libprotobuf and libprotoc projects.
+   If you are compiling them as static libraries, then you will need to link
+   against the zlib library directly from your own app.
+6) Edit config.h (in the vsprojects directory) and un-comment the line that
+   #defines HAVE_ZLIB.  (Or, alternatively, define this macro via the project
+   settings.)
 
 Notes on Compiler Warnings
 ==========================
