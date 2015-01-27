@@ -1,5 +1,5 @@
 // Protocol Buffers - Google's data interchange format
-// Copyright 2008 Google Inc.  All rights reserved.
+// Copyright 2012 Google Inc.  All rights reserved.
 // http://code.google.com/p/protobuf/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -28,15 +28,43 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// from google3/util/gtl/map-util.cc
-// Author: Anton Carver
+#ifndef GOOGLE_PROTOBUF_PLATFORM_MACROS_H_
+#define GOOGLE_PROTOBUF_PLATFORM_MACROS_H_
 
-#include <google/protobuf/stubs/map-util.h>
+#include <google/protobuf/stubs/common.h>
 
-namespace google {
-namespace protobuf {
+// Processor architecture detection.  For more info on what's defined, see:
+//   http://msdn.microsoft.com/en-us/library/b0084kay.aspx
+//   http://www.agner.org/optimize/calling_conventions.pdf
+//   or with gcc, run: "echo | gcc -E -dM -"
+#if defined(_M_X64) || defined(__x86_64__)
+#define GOOGLE_PROTOBUF_ARCH_X64 1
+#define GOOGLE_PROTOBUF_ARCH_64_BIT 1
+#elif defined(_M_IX86) || defined(__i386__)
+#define GOOGLE_PROTOBUF_ARCH_IA32 1
+#define GOOGLE_PROTOBUF_ARCH_32_BIT 1
+#elif defined(__QNX__)
+#define GOOGLE_PROTOBUF_ARCH_ARM_QNX 1
+#define GOOGLE_PROTOBUF_ARCH_32_BIT 1
+#elif defined(__ARMEL__)
+#define GOOGLE_PROTOBUF_ARCH_ARM 1
+#define GOOGLE_PROTOBUF_ARCH_32_BIT 1
+#elif defined(__MIPSEL__)
+#define GOOGLE_PROTOBUF_ARCH_MIPS 1
+#define GOOGLE_PROTOBUF_ARCH_32_BIT 1
+#elif defined(__pnacl__)
+#define GOOGLE_PROTOBUF_ARCH_32_BIT 1
+#elif defined(__ppc__)
+#define GOOGLE_PROTOBUF_ARCH_PPC 1
+#define GOOGLE_PROTOBUF_ARCH_32_BIT 1
+#else
+#error Host architecture was not detected as supported by protobuf
+#endif
 
-// Template module.  Nothing to see here.
+#if defined(__APPLE__)
+#define GOOGLE_PROTOBUF_OS_APPLE
+#elif defined(__native_client__)
+#define GOOGLE_PROTOBUF_OS_NACL
+#endif
 
-}  // namespace protobuf
-}  // namespace google
+#endif  // GOOGLE_PROTOBUF_PLATFORM_MACROS_H_

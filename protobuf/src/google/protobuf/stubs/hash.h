@@ -90,15 +90,19 @@ template <typename Key, typename Data,
           typename HashFcn = hash<Key>,
           typename EqualKey = int >
 class hash_map : public std::map<Key, Data, HashFcn> {
+ public:
+  hash_map(int = 0) {}
 };
 
 template <typename Key,
           typename HashFcn = hash<Key>,
           typename EqualKey = int >
 class hash_set : public std::set<Key, HashFcn> {
+ public:
+  hash_set(int = 0) {}
 };
 
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && !defined(_STLPORT_VERSION)
 
 template <typename Key>
 struct hash : public HASH_NAMESPACE::hash_compare<Key> {
@@ -123,6 +127,8 @@ template <typename Key, typename Data,
           typename EqualKey = int >
 class hash_map : public HASH_NAMESPACE::hash_map<
     Key, Data, HashFcn> {
+ public:
+  hash_map(int = 0) {}
 };
 
 template <typename Key,
@@ -130,6 +136,8 @@ template <typename Key,
           typename EqualKey = int >
 class hash_set : public HASH_NAMESPACE::hash_set<
     Key, HashFcn> {
+ public:
+  hash_set(int = 0) {}
 };
 
 #else
@@ -145,22 +153,35 @@ struct hash<const Key*> {
   }
 };
 
+// Unlike the old SGI version, the TR1 "hash" does not special-case char*.  So,
+// we go ahead and provide our own implementation.
 template <>
-struct hash<const char*> : public HASH_NAMESPACE::hash<const char*> {
+struct hash<const char*> {
+  inline size_t operator()(const char* str) const {
+    size_t result = 0;
+    for (; *str != '\0'; str++) {
+      result = 5 * result + *str;
+    }
+    return result;
+  }
 };
 
 template <typename Key, typename Data,
           typename HashFcn = hash<Key>,
           typename EqualKey = std::equal_to<Key> >
-class hash_map : public HASH_NAMESPACE::hash_map<
+class hash_map : public HASH_NAMESPACE::HASH_MAP_CLASS<
     Key, Data, HashFcn, EqualKey> {
+ public:
+  hash_map(int = 0) {}
 };
 
 template <typename Key,
           typename HashFcn = hash<Key>,
           typename EqualKey = std::equal_to<Key> >
-class hash_set : public HASH_NAMESPACE::hash_set<
+class hash_set : public HASH_NAMESPACE::HASH_SET_CLASS<
     Key, HashFcn, EqualKey> {
+ public:
+  hash_set(int = 0) {}
 };
 
 #endif
@@ -175,6 +196,33 @@ struct hash<string> {
   static const size_t min_buckets = 8;
   inline size_t operator()(const string& a, const string& b) const {
     return a < b;
+  }
+};
+
+template <typename First, typename Second>
+struct hash<pair<First, Second> > {
+  inline size_t operator()(const pair<First, Second>& key) const {
+    size_t first_hash = hash<First>()(key.first);
+    size_t second_hash = hash<Second>()(key.second);
+
+    // FIXME(kenton):  What is the best way to compute this hash?  I have
+    // no idea!  This seems a bit better than an XOR.
+    return first_hash * ((1 << 16) - 1) + second_hash;
+  }
+
+  static const size_t bucket_size = 4;
+  static const size_t min_buckets = 8;
+  inline size_t operator()(const pair<First, Second>& a,
+                           const pair<First, Second>& b) const {
+    return a < b;
+  }
+};
+
+// Used by GCC/SGI STL only.  (Why isn't this provided by the standard
+// library?  :( )
+struct streq {
+  inline bool operator()(const char* a, const char* b) const {
+    return strcmp(a, b) == 0;
   }
 };
 

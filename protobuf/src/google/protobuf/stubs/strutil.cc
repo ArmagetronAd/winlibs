@@ -36,6 +36,7 @@
 #include <limits>
 #include <limits.h>
 #include <stdio.h>
+#include <iterator>
 
 #ifdef _WIN32
 // MSVC has only _snprintf, not snprintf.
@@ -186,6 +187,44 @@ void SplitStringUsing(const string& full,
                       vector<string>* result) {
   back_insert_iterator< vector<string> > it(*result);
   SplitStringToIteratorUsing(full, delim, it);
+}
+
+// Split a string using a character delimiter. Append the components
+// to 'result'.  If there are consecutive delimiters, this function
+// will return corresponding empty strings. The string is split into
+// at most the specified number of pieces greedily. This means that the
+// last piece may possibly be split further. To split into as many pieces
+// as possible, specify 0 as the number of pieces.
+//
+// If "full" is the empty string, yields an empty string as the only value.
+//
+// If "pieces" is negative for some reason, it returns the whole string
+// ----------------------------------------------------------------------
+template <typename StringType, typename ITR>
+static inline
+void SplitStringToIteratorAllowEmpty(const StringType& full,
+                                     const char* delim,
+                                     int pieces,
+                                     ITR& result) {
+  string::size_type begin_index, end_index;
+  begin_index = 0;
+
+  for (int i = 0; (i < pieces-1) || (pieces == 0); i++) {
+    end_index = full.find_first_of(delim, begin_index);
+    if (end_index == string::npos) {
+      *result++ = full.substr(begin_index);
+      return;
+    }
+    *result++ = full.substr(begin_index, (end_index - begin_index));
+    begin_index = end_index + 1;
+  }
+  *result++ = full.substr(begin_index);
+}
+
+void SplitStringAllowEmpty(const string& full, const char* delim,
+                           vector<string>* result) {
+  back_insert_iterator<vector<string> > it(*result);
+  SplitStringToIteratorAllowEmpty(full, delim, 0, it);
 }
 
 // ----------------------------------------------------------------------
@@ -424,8 +463,8 @@ string UnescapeCEscapeString(const string& src) {
 //
 //    Currently only \n, \r, \t, ", ', \ and !isprint() chars are escaped.
 // ----------------------------------------------------------------------
-static int CEscapeInternal(const char* src, int src_len, char* dest,
-                           int dest_len, bool use_hex) {
+int CEscapeInternal(const char* src, int src_len, char* dest,
+                    int dest_len, bool use_hex, bool utf8_safe) {
   const char* src_end = src + src_len;
   int used = 0;
   bool last_hex_escape = false; // true if last output char was \xNN
@@ -446,7 +485,9 @@ static int CEscapeInternal(const char* src, int src_len, char* dest,
         // Note that if we emit \xNN and the src character after that is a hex
         // digit then that digit must be escaped too to prevent it being
         // interpreted as part of the character code by C.
-        if (!isprint(*src) || (last_hex_escape && isxdigit(*src))) {
+        if ((!utf8_safe || static_cast<uint8>(*src) < 0x80) &&
+            (!isprint(*src) ||
+             (last_hex_escape && isxdigit(*src)))) {
           if (dest_len - used < 4) // need space for 4 letter escape
             return -1;
           sprintf(dest + used, (use_hex ? "\\x%02x" : "\\%03o"),
@@ -468,7 +509,7 @@ static int CEscapeInternal(const char* src, int src_len, char* dest,
 }
 
 int CEscapeString(const char* src, int src_len, char* dest, int dest_len) {
-  return CEscapeInternal(src, src_len, dest, dest_len, false);
+  return CEscapeInternal(src, src_len, dest, dest_len, false, false);
 }
 
 // ----------------------------------------------------------------------
@@ -485,10 +526,32 @@ string CEscape(const string& src) {
   const int dest_length = src.size() * 4 + 1; // Maximum possible expansion
   scoped_array<char> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
-                                  dest.get(), dest_length, false);
+                                  dest.get(), dest_length, false, false);
   GOOGLE_DCHECK_GE(len, 0);
   return string(dest.get(), len);
 }
+
+namespace strings {
+
+string Utf8SafeCEscape(const string& src) {
+  const int dest_length = src.size() * 4 + 1; // Maximum possible expansion
+  scoped_array<char> dest(new char[dest_length]);
+  const int len = CEscapeInternal(src.data(), src.size(),
+                                  dest.get(), dest_length, false, true);
+  GOOGLE_DCHECK_GE(len, 0);
+  return string(dest.get(), len);
+}
+
+string CHexEscape(const string& src) {
+  const int dest_length = src.size() * 4 + 1; // Maximum possible expansion
+  scoped_array<char> dest(new char[dest_length]);
+  const int len = CEscapeInternal(src.data(), src.size(),
+                                  dest.get(), dest_length, true, false);
+  GOOGLE_DCHECK_GE(len, 0);
+  return string(dest.get(), len);
+}
+
+}  // namespace strings
 
 // ----------------------------------------------------------------------
 // strto32_adaptor()
@@ -645,7 +708,14 @@ char *InternalFastHexToBuffer(uint64 value, char* buffer, int num_byte) {
   static const char *hexdigits = "0123456789abcdef";
   buffer[num_byte] = '\0';
   for (int i = num_byte - 1; i >= 0; i--) {
+#ifdef _M_X64
+    // MSVC x64 platform has a bug optimizing the uint32(value) in the #else
+    // block. Given that the uint32 cast was to improve performance on 32-bit
+    // platforms, we use 64-bit '&' directly.
+    buffer[i] = hexdigits[value & 0xf];
+#else
     buffer[i] = hexdigits[uint32(value) & 0xf];
+#endif
     value >>= 4;
   }
   return buffer;
@@ -1027,7 +1097,7 @@ char* DoubleToBuffer(double value, char* buffer) {
 bool safe_strtof(const char* str, float* value) {
   char* endptr;
   errno = 0;  // errno only gets set on errors
-#ifdef _WIN32  // has no strtof()
+#if defined(_WIN32) || defined (__hpux)  // has no strtof()
   *value = strtod(str, &endptr);
 #else
   *value = strtof(str, &endptr);

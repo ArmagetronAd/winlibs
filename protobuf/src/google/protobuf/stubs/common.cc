@@ -31,16 +31,17 @@
 // Author: kenton@google.com (Kenton Varda)
 
 #include <google/protobuf/stubs/common.h>
-#include <google/protobuf/stubs/strutil.h>
-#include <google/protobuf/stubs/substitute.h>
+#include <google/protobuf/stubs/once.h>
 #include <stdio.h>
 #include <errno.h>
+#include <vector>
 
 #include "config.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN  // We only need minimal includes
 #include <windows.h>
+#define snprintf _snprintf    // see comment in strutil.cc
 #elif defined(HAVE_PTHREAD)
 #include <pthread.h>
 #else
@@ -85,7 +86,15 @@ string VersionString(int version) {
   int minor = (version / 1000) % 1000;
   int micro = version % 1000;
 
-  return strings::Substitute("$0.$1.$2", major, minor, micro);
+  // 128 bytes should always be enough, but we use snprintf() anyway to be
+  // safe.
+  char buffer[128];
+  snprintf(buffer, sizeof(buffer), "%d.%d.%d", major, minor, micro);
+
+  // Guard against broken MSVC snprintf().
+  buffer[sizeof(buffer)-1] = '\0';
+
+  return buffer;
 }
 
 }  // namespace internal
@@ -101,7 +110,7 @@ void DefaultLogHandler(LogLevel level, const char* filename, int line,
 
   // We use fprintf() instead of cerr because we want this to work at static
   // initialization time.
-  fprintf(stderr, "libprotobuf %s %s:%d] %s\n",
+  fprintf(stderr, "[libprotobuf %s %s:%d] %s\n",
           level_names[level], filename, line, message.c_str());
   fflush(stderr);  // Needed on MSVC.
 }
@@ -113,23 +122,55 @@ void NullLogHandler(LogLevel level, const char* filename, int line,
 
 static LogHandler* log_handler_ = &DefaultLogHandler;
 static int log_silencer_count_ = 0;
-static Mutex log_silencer_count_mutex_;
 
-static string SimpleCtoa(char c) { return string(1, c); }
+static Mutex* log_silencer_count_mutex_ = NULL;
+GOOGLE_PROTOBUF_DECLARE_ONCE(log_silencer_count_init_);
 
+void DeleteLogSilencerCount() {
+  delete log_silencer_count_mutex_;
+  log_silencer_count_mutex_ = NULL;
+}
+void InitLogSilencerCount() {
+  log_silencer_count_mutex_ = new Mutex;
+  OnShutdown(&DeleteLogSilencerCount);
+}
+void InitLogSilencerCountOnce() {
+  GoogleOnceInit(&log_silencer_count_init_, &InitLogSilencerCount);
+}
+
+LogMessage& LogMessage::operator<<(const string& value) {
+  message_ += value;
+  return *this;
+}
+
+LogMessage& LogMessage::operator<<(const char* value) {
+  message_ += value;
+  return *this;
+}
+
+// Since this is just for logging, we don't care if the current locale changes
+// the results -- in fact, we probably prefer that.  So we use snprintf()
+// instead of Simple*toa().
 #undef DECLARE_STREAM_OPERATOR
-#define DECLARE_STREAM_OPERATOR(TYPE, TOSTRING)                     \
+#define DECLARE_STREAM_OPERATOR(TYPE, FORMAT)                       \
   LogMessage& LogMessage::operator<<(TYPE value) {                  \
-    message_ += TOSTRING(value);                                    \
+    /* 128 bytes should be big enough for any of the primitive */   \
+    /* values which we print with this, but well use snprintf() */  \
+    /* anyway to be extra safe. */                                  \
+    char buffer[128];                                               \
+    snprintf(buffer, sizeof(buffer), FORMAT, value);                \
+    /* Guard against broken MSVC snprintf(). */                     \
+    buffer[sizeof(buffer)-1] = '\0';                                \
+    message_ += buffer;                                             \
     return *this;                                                   \
   }
 
-DECLARE_STREAM_OPERATOR(const string&, )
-DECLARE_STREAM_OPERATOR(const char*  , )
-DECLARE_STREAM_OPERATOR(char         , SimpleCtoa)
-DECLARE_STREAM_OPERATOR(int          , SimpleItoa)
-DECLARE_STREAM_OPERATOR(uint         , SimpleItoa)
-DECLARE_STREAM_OPERATOR(double       , SimpleDtoa)
+DECLARE_STREAM_OPERATOR(char         , "%c" )
+DECLARE_STREAM_OPERATOR(int          , "%d" )
+DECLARE_STREAM_OPERATOR(uint         , "%u" )
+DECLARE_STREAM_OPERATOR(long         , "%ld")
+DECLARE_STREAM_OPERATOR(unsigned long, "%lu")
+DECLARE_STREAM_OPERATOR(double       , "%g" )
 #undef DECLARE_STREAM_OPERATOR
 
 LogMessage::LogMessage(LogLevel level, const char* filename, int line)
@@ -140,16 +181,21 @@ void LogMessage::Finish() {
   bool suppress = false;
 
   if (level_ != LOGLEVEL_FATAL) {
-    MutexLock lock(&internal::log_silencer_count_mutex_);
-    suppress = internal::log_silencer_count_ > 0;
+    InitLogSilencerCountOnce();
+    MutexLock lock(log_silencer_count_mutex_);
+    suppress = log_silencer_count_ > 0;
   }
 
   if (!suppress) {
-    internal::log_handler_(level_, filename_, line_, message_);
+    log_handler_(level_, filename_, line_, message_);
   }
 
   if (level_ == LOGLEVEL_FATAL) {
+#if PROTOBUF_USE_EXCEPTIONS
+    throw FatalException(filename_, line_, message_);
+#else
     abort();
+#endif
   }
 }
 
@@ -173,12 +219,14 @@ LogHandler* SetLogHandler(LogHandler* new_func) {
 }
 
 LogSilencer::LogSilencer() {
-  MutexLock lock(&internal::log_silencer_count_mutex_);
+  internal::InitLogSilencerCountOnce();
+  MutexLock lock(internal::log_silencer_count_mutex_);
   ++internal::log_silencer_count_;
 };
 
 LogSilencer::~LogSilencer() {
-  MutexLock lock(&internal::log_silencer_count_mutex_);
+  internal::InitLogSilencerCountOnce();
+  MutexLock lock(internal::log_silencer_count_mutex_);
   --internal::log_silencer_count_;
 };
 
@@ -269,6 +317,78 @@ void Mutex::AssertHeld() {
   // TODO(kenton):  Maybe keep track of locking thread ID like with WIN32?
 }
 
+#endif
+
+// ===================================================================
+// emulates google3/util/endian/endian.h
+//
+// TODO(xiaofeng): PROTOBUF_LITTLE_ENDIAN is unfortunately defined in
+// google/protobuf/io/coded_stream.h and therefore can not be used here.
+// Maybe move that macro definition here in the furture.
+uint32 ghtonl(uint32 x) {
+  union {
+    uint32 result;
+    uint8 result_array[4];
+  };
+  result_array[0] = static_cast<uint8>(x >> 24);
+  result_array[1] = static_cast<uint8>((x >> 16) & 0xFF);
+  result_array[2] = static_cast<uint8>((x >> 8) & 0xFF);
+  result_array[3] = static_cast<uint8>(x & 0xFF);
+  return result;
+}
+
+// ===================================================================
+// Shutdown support.
+
+namespace internal {
+
+typedef void OnShutdownFunc();
+vector<void (*)()>* shutdown_functions = NULL;
+Mutex* shutdown_functions_mutex = NULL;
+GOOGLE_PROTOBUF_DECLARE_ONCE(shutdown_functions_init);
+
+void InitShutdownFunctions() {
+  shutdown_functions = new vector<void (*)()>;
+  shutdown_functions_mutex = new Mutex;
+}
+
+inline void InitShutdownFunctionsOnce() {
+  GoogleOnceInit(&shutdown_functions_init, &InitShutdownFunctions);
+}
+
+void OnShutdown(void (*func)()) {
+  InitShutdownFunctionsOnce();
+  MutexLock lock(shutdown_functions_mutex);
+  shutdown_functions->push_back(func);
+}
+
+}  // namespace internal
+
+void ShutdownProtobufLibrary() {
+  internal::InitShutdownFunctionsOnce();
+
+  // We don't need to lock shutdown_functions_mutex because it's up to the
+  // caller to make sure that no one is using the library before this is
+  // called.
+
+  // Make it safe to call this multiple times.
+  if (internal::shutdown_functions == NULL) return;
+
+  for (int i = 0; i < internal::shutdown_functions->size(); i++) {
+    internal::shutdown_functions->at(i)();
+  }
+  delete internal::shutdown_functions;
+  internal::shutdown_functions = NULL;
+  delete internal::shutdown_functions_mutex;
+  internal::shutdown_functions_mutex = NULL;
+}
+
+#if PROTOBUF_USE_EXCEPTIONS
+FatalException::~FatalException() throw() {}
+
+const char* FatalException::what() const throw() {
+  return message_.c_str();
+}
 #endif
 
 }  // namespace protobuf
