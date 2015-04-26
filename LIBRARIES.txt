@@ -7,6 +7,22 @@ version control.
 
 Links and Instructions for each library:
 
+
+SDL2:
+	Version 2.0.3
+	Homepage: https://www.libsdl.org/download-2.0.php
+	Download: https://www.libsdl.org/release/SDL2-2.0.3.zip
+
+SDL2_Image:
+	Version 2.0.0
+	Homepage: https://www.libsdl.org/projects/SDL_image/
+	Download: https://www.libsdl.org/projects/SDL_image/release/SDL2_image-devel-2.0.0-mingw.tar.gz
+
+SDL2_Mixer:
+	Version 2.0.0
+	Homepage: https://www.libsdl.org/projects/SDL_mixer/
+	Download: https://www.libsdl.org/projects/SDL_mixer/release/SDL2_mixer-2.0.0.zip
+	
 SDL:	
 	Version: 1.2.10
 	Link: http://www.libsdl.org/download-1.2.php (latest 1.2.10)
@@ -92,18 +108,11 @@ FTGL:
 	Homepage: http://www.freetype.org/download.html#stable (latest 2.4.8)
 
 boost:
-	Version: 1.47.0
-	http://sourceforge.net/projects/boost/files/boost/1.47.0/
+	Version: 1.53.0
+	http://sourceforge.net/projects/boost/files/boost/1.53.0/
 	Download: Source Archive and just extract required headers.
 	Homepage: http://www.boost.org
 
-	The libraries in win32/boost_libraries are build from the full source using bjam;
-        to rebuild them, you need to have code::blocks' mingw32/bin directory in your path so
-        the compiler can be found, then you need to call "build.bat gcc" in the directory
-        tools\build\v2\engine, copy the resulting tools\build\v2\engine\bin.ntx86\bjam.exe into
-        your path, then call
-        bjam toolset=gcc link=static --with-thread
-        from the top boost directory. Libraries can then be copied from stage\lib.
+	build info for libs is in win32/boost_libs.
         
-	
 http://wiki.codeblocks.org/index.php?title=FAQ#Q:_How_can_I_use_a_DLL_without_DEF_or_LIB_files_.3F
