@@ -1,28 +1,37 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 /* System independent thread management routines for SDL */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "SDL_error.h"
 #include "SDL_mutex.h"
 #include "SDL_thread.h"
 #include "SDL_thread_c.h"
@@ -37,13 +46,20 @@ static int SDL_maxthreads = 0;
 static int SDL_numthreads = 0;
 static SDL_Thread **SDL_Threads = NULL;
 static SDL_mutex *thread_lock = NULL;
+int _creating_thread_lock = 0;
 
 int SDL_ThreadsInit(void)
 {
 	int retval;
 
 	retval = 0;
+	/* Set the thread lock creation flag so that we can reuse an
+	   existing lock on the system - since this mutex never gets
+	   destroyed (see SDL_ThreadsQuit()), we want to reuse it.
+	*/
+	_creating_thread_lock = 1;
 	thread_lock = SDL_CreateMutex();
+	_creating_thread_lock = 0;
 	if ( thread_lock == NULL ) {
 		retval = -1;
 	}
@@ -55,7 +71,7 @@ int SDL_ThreadsInit(void)
    clean up threads here.  If any threads are still running after this call,
    they will no longer have access to any per-thread data.
  */
-void SDL_ThreadsQuit(void)
+void SDL_ThreadsQuit()
 {
 	SDL_mutex *mutex;
 
@@ -69,13 +85,15 @@ void SDL_ThreadsQuit(void)
 /* Routines for manipulating the thread list */
 static void SDL_AddThread(SDL_Thread *thread)
 {
+	SDL_Thread **threads;
+
 	/* WARNING:
 	   If the very first threads are created simultaneously, then
 	   there could be a race condition causing memory corruption.
 	   In practice, this isn't a problem because by definition there
 	   is only one thread running the first time this is called.
 	*/
-	if ( !thread_lock ) {
+	if ( thread_lock == NULL ) {
 		if ( SDL_ThreadsInit() < 0 ) {
 			return;
 		}
@@ -88,14 +106,17 @@ static void SDL_AddThread(SDL_Thread *thread)
 			SDL_numthreads, SDL_maxthreads);
 #endif
 	if ( SDL_numthreads == SDL_maxthreads ) {
-		SDL_Thread **threads;
-		threads = (SDL_Thread **)SDL_realloc(SDL_Threads,
-			(SDL_maxthreads+ARRAY_CHUNKSIZE)*(sizeof *threads));
+		threads=(SDL_Thread **)malloc((SDL_maxthreads+ARRAY_CHUNKSIZE)*
+		                              (sizeof *threads));
 		if ( threads == NULL ) {
 			SDL_OutOfMemory();
 			goto done;
 		}
+		memcpy(threads, SDL_Threads, SDL_numthreads*(sizeof *threads));
 		SDL_maxthreads += ARRAY_CHUNKSIZE;
+		if ( SDL_Threads ) {
+			free(SDL_Threads);
+		}
 		SDL_Threads = threads;
 	}
 	SDL_Threads[SDL_numthreads++] = thread;
@@ -107,38 +128,31 @@ static void SDL_DelThread(SDL_Thread *thread)
 {
 	int i;
 
-	if ( !thread_lock ) {
-		return;
-	}
-	SDL_mutexP(thread_lock);
-	for ( i=0; i<SDL_numthreads; ++i ) {
-		if ( thread == SDL_Threads[i] ) {
-			break;
-		}
-	}
-	if ( i < SDL_numthreads ) {
-		if ( --SDL_numthreads > 0 ) {
-			while ( i < SDL_numthreads ) {
-				SDL_Threads[i] = SDL_Threads[i+1];
-				++i;
+	if ( thread_lock ) {
+		SDL_mutexP(thread_lock);
+		for ( i=0; i<SDL_numthreads; ++i ) {
+			if ( thread == SDL_Threads[i] ) {
+				break;
 			}
-		} else {
-			SDL_maxthreads = 0;
-			SDL_free(SDL_Threads);
-			SDL_Threads = NULL;
 		}
+		if ( i < SDL_numthreads ) {
+			if ( --SDL_numthreads > 0 ) {
+				while ( i < SDL_numthreads ) {
+					SDL_Threads[i] = SDL_Threads[i+1];
+					++i;
+				}
+			} else {
+				SDL_maxthreads = 0;
+				free(SDL_Threads);
+				SDL_Threads = NULL;
+			}
 #ifdef DEBUG_THREADS
-		printf("Deleting thread (%d left - %d max)\n",
-				SDL_numthreads, SDL_maxthreads);
+			printf("Deleting thread (%d left - %d max)\n",
+					SDL_numthreads, SDL_maxthreads);
 #endif
+		}
+		SDL_mutexV(thread_lock);
 	}
-	SDL_mutexV(thread_lock);
-
-#if 0	/* There could be memory corruption if another thread is starting */
-	if ( SDL_Threads == NULL ) {
-		SDL_ThreadsQuit();
-	}
-#endif
 }
 
 /* The default (non-thread-safe) global error variable */
@@ -170,7 +184,7 @@ SDL_error *SDL_GetErrBuf(void)
 
 /* Arguments and callback to setup and run the user thread function */
 typedef struct {
-	int (SDLCALL *func)(void *);
+	int (*func)(void *);
 	void *data;
 	SDL_Thread *info;
 	SDL_sem *wait;
@@ -179,7 +193,7 @@ typedef struct {
 void SDL_RunThread(void *data)
 {
 	thread_args *args;
-	int (SDLCALL *userfunc)(void *);
+	int (*userfunc)(void *);
 	void *userdata;
 	int *statusloc;
 
@@ -204,31 +218,26 @@ void SDL_RunThread(void *data)
 	*statusloc = userfunc(userdata);
 }
 
-#ifdef SDL_PASSED_BEGINTHREAD_ENDTHREAD
-#undef SDL_CreateThread
-DECLSPEC SDL_Thread * SDLCALL SDL_CreateThread(int (SDLCALL *fn)(void *), void *data, pfnSDL_CurrentBeginThread pfnBeginThread, pfnSDL_CurrentEndThread pfnEndThread)
-#else
-DECLSPEC SDL_Thread * SDLCALL SDL_CreateThread(int (SDLCALL *fn)(void *), void *data)
-#endif
+SDL_Thread *SDL_CreateThread(int (*fn)(void *), void *data)
 {
 	SDL_Thread *thread;
 	thread_args *args;
 	int ret;
 
 	/* Allocate memory for the thread info structure */
-	thread = (SDL_Thread *)SDL_malloc(sizeof(*thread));
+	thread = (SDL_Thread *)malloc(sizeof(*thread));
 	if ( thread == NULL ) {
 		SDL_OutOfMemory();
 		return(NULL);
 	}
-	SDL_memset(thread, 0, (sizeof *thread));
+	memset(thread, 0, (sizeof *thread));
 	thread->status = -1;
 
 	/* Set up the arguments for the thread */
-	args = (thread_args *)SDL_malloc(sizeof(*args));
+	args = (thread_args *)malloc(sizeof(*args));
 	if ( args == NULL ) {
 		SDL_OutOfMemory();
-		SDL_free(thread);
+		free(thread);
 		return(NULL);
 	}
 	args->func = fn;
@@ -236,8 +245,8 @@ DECLSPEC SDL_Thread * SDLCALL SDL_CreateThread(int (SDLCALL *fn)(void *), void *
 	args->info = thread;
 	args->wait = SDL_CreateSemaphore(0);
 	if ( args->wait == NULL ) {
-		SDL_free(thread);
-		SDL_free(args);
+		free(thread);
+		free(args);
 		return(NULL);
 	}
 
@@ -245,22 +254,18 @@ DECLSPEC SDL_Thread * SDLCALL SDL_CreateThread(int (SDLCALL *fn)(void *), void *
 	SDL_AddThread(thread);
 
 	/* Create the thread and go! */
-#ifdef SDL_PASSED_BEGINTHREAD_ENDTHREAD
-	ret = SDL_SYS_CreateThread(thread, args, pfnBeginThread, pfnEndThread);
-#else
 	ret = SDL_SYS_CreateThread(thread, args);
-#endif
 	if ( ret >= 0 ) {
 		/* Wait for the thread function to use arguments */
 		SDL_SemWait(args->wait);
 	} else {
 		/* Oops, failed.  Gotta free everything */
 		SDL_DelThread(thread);
-		SDL_free(thread);
+		free(thread);
 		thread = NULL;
 	}
 	SDL_DestroySemaphore(args->wait);
-	SDL_free(args);
+	free(args);
 
 	/* Everything is running now */
 	return(thread);
@@ -274,7 +279,7 @@ void SDL_WaitThread(SDL_Thread *thread, int *status)
 			*status = thread->status;
 		}
 		SDL_DelThread(thread);
-		SDL_free(thread);
+		free(thread);
 	}
 }
 

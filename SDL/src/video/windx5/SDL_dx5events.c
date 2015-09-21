@@ -1,37 +1,42 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 /* CAUTION!!!!  If you modify this file, check ../windib/SDL_sysevents.c */
 
 #include "directx.h"
 
-#include "SDL_main.h"
+#include <stdio.h>
 #include "SDL_events.h"
 #include "SDL_video.h"
+#include "SDL_error.h"
 #include "SDL_syswm.h"
-#include "../../events/SDL_sysevents.h"
-#include "../../events/SDL_events_c.h"
-#include "../wincommon/SDL_lowvideo.h"
+#include "SDL_sysevents.h"
+#include "SDL_events_c.h"
+#include "SDL_lowvideo.h"
 #include "SDL_dx5video.h"
 
 #ifndef WM_APP
@@ -43,7 +48,7 @@
 #endif
 
 /* The keyboard and mouse device input */
-#define MAX_INPUTS	2
+#define MAX_INPUTS	16		/* Maximum of 16-1 input devices */
 #define INPUT_QSIZE	512		/* Buffer up to 512 input messages */
 
 static LPDIRECTINPUT dinput = NULL;
@@ -61,12 +66,7 @@ static SDL_keysym *TranslateKey(UINT scancode, SDL_keysym *keysym, int pressed);
 
 /* DJM: If the user setup the window for us, we want to save his window proc,
    and give him a chance to handle some messages. */
-#ifdef STRICT
-#define WNDPROCTYPE	WNDPROC
-#else
-#define WNDPROCTYPE	FARPROC
-#endif
-static WNDPROCTYPE userWindowProc = NULL;
+static WNDPROC userWindowProc = NULL;
 
 static HWND GetTopLevelParent(HWND hWnd)
 {
@@ -111,13 +111,12 @@ static void SetDIerror(char *function, int code)
 			error = "Device not initialized";
 			break;
 		default:
-			SDL_snprintf(errbuf, SDL_arraysize(errbuf),
-			         "%s: Unknown DirectInput error: 0x%x",
+			sprintf(errbuf, "%s: Unknown DirectInput error: 0x%x",
 								function, code);
 			break;
 	}
 	if ( ! errbuf[0] ) {
-		SDL_snprintf(errbuf, SDL_arraysize(errbuf), "%s: %s", function, error);
+		sprintf(errbuf, "%s: %s", function, error);
 	}
 	SDL_SetError("%s", errbuf);
 	return;
@@ -143,14 +142,9 @@ struct {
 		(DISCL_FOREGROUND|DISCL_NONEXCLUSIVE),
 		(DISCL_FOREGROUND|DISCL_NONEXCLUSIVE), handle_keyboard },
 	{ "mouse",
-		&GUID_SysMouse,
-#if DIRECTINPUT_VERSION >= 0x700
-		&c_dfDIMouse2,
-#else
-		&c_dfDIMouse,
-#endif
-		(DISCL_BACKGROUND|DISCL_NONEXCLUSIVE),
-		(DISCL_BACKGROUND|DISCL_NONEXCLUSIVE), handle_mouse },
+		&GUID_SysMouse, &c_dfDIMouse,
+		(DISCL_FOREGROUND|DISCL_NONEXCLUSIVE),
+		(DISCL_FOREGROUND|DISCL_EXCLUSIVE), handle_mouse },
 	{ NULL, NULL, NULL, 0, 0, NULL }
 };
 	
@@ -203,7 +197,7 @@ static int DX5_DInputInit(_THIS)
 		}
 
 		/* Set buffered input -- we aren't polling */
-		SDL_memset(&dipdw, 0, sizeof(dipdw));
+		memset(&dipdw, 0, sizeof(dipdw));
 		dipdw.diph.dwSize = sizeof(dipdw);
 		dipdw.diph.dwHeaderSize = sizeof(dipdw.diph);
 		dipdw.diph.dwObj = 0;
@@ -264,8 +258,6 @@ static void DX5_DInputQuit(_THIS)
 				SDL_DIdev[i] = NULL;
 			}
 		}
-		SDL_DIndev = 0;
-
 		/* Release DirectInput */
 		IDirectInput_Release(dinput);
 		dinput = NULL;
@@ -292,71 +284,6 @@ static void handle_keyboard(const int numevents, DIDEVICEOBJECTDATA *keybuf)
 		}
 	}
 }
-
-static void post_mouse_motion(int relative, Sint16 x, Sint16 y)
-{
-	extern int mouse_relative;
-
-	if ( SDL_GetAppState() & SDL_APPMOUSEFOCUS ) {
-		posted = SDL_PrivateMouseMotion(
-			0, relative, x, y);
-
-		if ( !mouse_relative ) {
-			/* As DirectInput reads raw device coordinates, it has no notion of
-			 * cursors or absolute position. We must assume responsibility for
-			 * keeping track of this. */
-			int current_x, current_y;
-			POINT cursor;
-			RECT trap;
-			RECT window;
-			int at_edge;
-
-			/* Get the current cursor position */
-			SDL_GetMouseState(&current_x, &current_y);
-			cursor.x = current_x;
-			cursor.y = current_y;
-			ClientToScreen(SDL_Window, &cursor);
-
-			/* Construct a 1 pixel square RECT that is used to confine the cursor
-			 * pointer to a specific pixel using ClipCursor. This is used in
-			 * preference to SetCursorPos as it avoids the cursor jumping around as
-			 * both the OS and SDL attempt to move it simultaneously. */
-			trap.left = cursor.x;
-			trap.top = cursor.y;
-			trap.right = cursor.x + 1;
-			trap.bottom = cursor.y + 1;
-
-			GetClientRect(SDL_Window, &window);
-			window.right -= window.left; window.left = 0;
-			window.bottom -= window.top; window.top = 0;
-
-			/* As we're assuming control over the cursor, we need to know when to
-			 * relinquish control of it back to the operating system. This is when
-			 * the cursor reaches the edge of the window. */
-			at_edge = (current_x == window.left) ||
-				(current_x == (window.right - 1)) ||
-				(current_y == window.top) ||
-				(current_y == (window.bottom - 1));
-
-			if ( at_edge ) {
-				ClipCursor(NULL);
-			} else {
-				ClipCursor(&trap);
-			}
-		} else {
-			/* When in relative mode, warp the OS's idea of where the cursor is to
-			 * the center of the screen. This isn't really necessary as DirectInput
-			 * reads from the hardware itself, but in case things go wrong, the
-			 * cursor will be left in a sensible place. */
-			POINT center;
-			center.x = (SDL_VideoSurface->w/2);
-			center.y = (SDL_VideoSurface->h/2);
-			ClientToScreen(SDL_Window, &center);
-			SetCursorPos(center.x, center.y);
-		}
-	}
-}
-
 static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 {
 	int i;
@@ -370,14 +297,14 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 		return;
 	}
 
-	/* If mouse focus has been lost, make sure we release the cursor. */
-	if ( !(SDL_GetAppState() & SDL_APPMOUSEFOCUS) ) {
-		mouse_lost = 1;
-		ClipCursor(NULL);
+	/* If we are in windowed mode, Windows is taking care of the mouse */
+	if (  (SDL_PublicSurface->flags & SDL_OPENGL) ||
+	     !(SDL_PublicSurface->flags & SDL_FULLSCREEN) ) {
+		return;
 	}
 
 	/* If the mouse was lost, regain some sense of mouse state */
-	if ( mouse_lost && (SDL_GetAppState() & SDL_APPMOUSEFOCUS) ) {
+	if ( mouse_lost ) {
 		POINT mouse_pos;
 		Uint8 old_state;
 		Uint8 new_state;
@@ -385,17 +312,14 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 		/* Set ourselves up with the current cursor position */
 		GetCursorPos(&mouse_pos);
 		ScreenToClient(SDL_Window, &mouse_pos);
-		post_mouse_motion( 0, (Sint16)mouse_pos.x, (Sint16)mouse_pos.y);
+		posted = SDL_PrivateMouseMotion(0, 0,
+				(Sint16)mouse_pos.x, (Sint16)mouse_pos.y);
 
 		/* Check for mouse button changes */
 		old_state = SDL_GetMouseState(NULL, NULL);
 		new_state = 0;
 		{ /* Get the new DirectInput button state for the mouse */
-#if DIRECTINPUT_VERSION >= 0x700
-			DIMOUSESTATE2 distate;
-#else
 			DIMOUSESTATE distate;
-#endif
 			HRESULT result;
 
 			result=IDirectInputDevice2_GetDeviceState(SDL_DIdev[1],
@@ -416,13 +340,14 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 		for ( i=0; i<8; ++i ) {
 			if ( (old_state&0x01) != (new_state&0x01) ) {
 				button = (Uint8)(i+1);
-				/* Map DI button numbers to SDL */
-				switch ( button ) {
-					case 2: button = SDL_BUTTON_RIGHT; break;
-					case 3: button = SDL_BUTTON_MIDDLE; break;
-					case 4: button = SDL_BUTTON_X1; break;
-					case 5: button = SDL_BUTTON_X2; break;
-					default: break;
+				/* Button #2 on two button mice is button 3
+				   (the middle button is button 2)
+				 */
+				if ( button == 2 ) {
+					button = 3;
+				} else
+				if ( button == 3 ) {
+					button = 2;
 				}
 				if ( new_state & 0x01 ) {
 					/* Grab mouse so we get mouse-up */
@@ -461,7 +386,8 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 			case DIMOFS_X:
 				if ( timestamp != ptrbuf[i].dwTimeStamp ) {
 					if ( xrel || yrel ) {
-						post_mouse_motion(1, xrel, yrel);
+						posted = SDL_PrivateMouseMotion(
+								0, 1, xrel, yrel);
 						xrel = 0;
 						yrel = 0;
 					}
@@ -472,7 +398,8 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 			case DIMOFS_Y:
 				if ( timestamp != ptrbuf[i].dwTimeStamp ) {
 					if ( xrel || yrel ) {
-						post_mouse_motion(1, xrel, yrel);
+						posted = SDL_PrivateMouseMotion(
+								0, 1, xrel, yrel);
 						xrel = 0;
 						yrel = 0;
 					}
@@ -482,7 +409,8 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 				break;
 			case DIMOFS_Z:
 				if ( xrel || yrel ) {
-					post_mouse_motion(1, xrel, yrel);
+					posted = SDL_PrivateMouseMotion(
+							0, 1, xrel, yrel);
 					xrel = 0;
 					yrel = 0;
 				}
@@ -500,26 +428,22 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 			case DIMOFS_BUTTON1:
 			case DIMOFS_BUTTON2:
 			case DIMOFS_BUTTON3:
-#if DIRECTINPUT_VERSION >= 0x700
-			case DIMOFS_BUTTON4:
-			case DIMOFS_BUTTON5:
-			case DIMOFS_BUTTON6:
-			case DIMOFS_BUTTON7:
-#endif
 				if ( xrel || yrel ) {
-					post_mouse_motion(1, xrel, yrel);
+					posted = SDL_PrivateMouseMotion(
+							0, 1, xrel, yrel);
 					xrel = 0;
 					yrel = 0;
 				}
 				timestamp = 0;
 				button = (Uint8)(ptrbuf[i].dwOfs-DIMOFS_BUTTON0)+1;
-				/* Map DI button numbers to SDL */
-				switch ( button ) {
-					case 2: button = SDL_BUTTON_RIGHT; break;
-					case 3: button = SDL_BUTTON_MIDDLE; break;
-					case 4: button = SDL_BUTTON_X1; break;
-					case 5: button = SDL_BUTTON_X2; break;
-					default: break;
+				/* Button #2 on two button mice is button 3
+				   (the middle button is button 2)
+				 */
+				if ( button == 2 ) {
+					button = 3;
+				} else
+				if ( button == 3 ) {
+					button = 2;
 				}
 				if ( ptrbuf[i].dwData & 0x80 ) {
 					/* Grab mouse so we get mouse-up */
@@ -546,12 +470,13 @@ static void handle_mouse(const int numevents, DIDEVICEOBJECTDATA *ptrbuf)
 		}
 	}
 	if ( xrel || yrel ) {
-		post_mouse_motion(1, xrel, yrel);
+		posted = SDL_PrivateMouseMotion( 0, 1, xrel, yrel);
 	}
 }
 
 /* The main Win32 event handler */
-LRESULT DX5_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LONG
+ DX5_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg) {
 #ifdef WM_ACTIVATEAPP
@@ -577,7 +502,7 @@ LRESULT DX5_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 #ifdef WM_DISPLAYCHANGE
 		case WM_DISPLAYCHANGE: {
-			WPARAM BitsPerPixel;
+			WORD BitsPerPixel;
 			WORD SizeX, SizeY;
 
 			/* Ack!  The display changed size and/or depth! */
@@ -656,7 +581,6 @@ static int DX5_CheckInput(_THIS, int timeout, BOOL processInput)
 	while ( ! posted &&
 	        PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE) ) {
 		if ( GetMessage(&msg, NULL, 0, 0) > 0 ) {
-			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		} else {
 			return(-1);
@@ -667,18 +591,16 @@ static int DX5_CheckInput(_THIS, int timeout, BOOL processInput)
 	}
 
 	/* Pump the DirectInput flow */
-	if ( SDL_GetAppState() & SDL_APPMOUSEFOCUS ) {
-		for ( i=0; i<MAX_INPUTS; ++i ) {
-			if ( SDL_DIdev[i] != NULL ) {
-				result = IDirectInputDevice2_Poll(SDL_DIdev[i]);
-				if ( (result == DIERR_INPUTLOST) ||
-						(result == DIERR_NOTACQUIRED) ) {
-					if ( SDL_strcmp(inputs[i].name, "mouse") == 0 ) {
-						mouse_lost = 1;
-					}
-					IDirectInputDevice2_Acquire(SDL_DIdev[i]);
-					IDirectInputDevice2_Poll(SDL_DIdev[i]);
+	if ( SDL_GetAppState() & SDL_APPINPUTFOCUS ) {
+		for ( i=0; i<SDL_DIndev; ++i ) {
+			result = IDirectInputDevice2_Poll(SDL_DIdev[i]);
+			if ( (result == DIERR_INPUTLOST) ||
+					(result == DIERR_NOTACQUIRED) ) {
+				if ( strcmp(inputs[i].name, "mouse") == 0 ) {
+					mouse_lost = 1;
 				}
+				IDirectInputDevice2_Acquire(SDL_DIdev[i]);
+				IDirectInputDevice2_Poll(SDL_DIdev[i]);
 			}
 		}
 	}
@@ -688,7 +610,7 @@ static int DX5_CheckInput(_THIS, int timeout, BOOL processInput)
 							timeout, QS_ALLEVENTS);
 	if ((event >= WAIT_OBJECT_0) && (event < (WAIT_OBJECT_0+SDL_DIndev))) {
 		DWORD numevents;
-		static DIDEVICEOBJECTDATA evtbuf[INPUT_QSIZE];
+		DIDEVICEOBJECTDATA evtbuf[INPUT_QSIZE];
 
 		event -= WAIT_OBJECT_0;
 		numevents = INPUT_QSIZE;
@@ -697,7 +619,7 @@ static int DX5_CheckInput(_THIS, int timeout, BOOL processInput)
 							evtbuf, &numevents, 0);
 		if ( (result == DIERR_INPUTLOST) ||
 					(result == DIERR_NOTACQUIRED) ) {
-			if ( SDL_strcmp(inputs[event].name, "mouse") == 0 ) {
+			if ( strcmp(inputs[event].name, "mouse") == 0 ) {
 				mouse_lost = 1;
 			}
 			IDirectInputDevice2_Acquire(SDL_DIdev[event]);
@@ -715,17 +637,12 @@ static int DX5_CheckInput(_THIS, int timeout, BOOL processInput)
 	}
 	if ( event != WAIT_TIMEOUT ) {
 		/* Maybe there was a windows message? */
-		posted = 0;
-		while ( ! posted &&
-			PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE) ) {
+		if ( PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE) ) {
 			if ( GetMessage(&msg, NULL, 0, 0) > 0 ) {
-				TranslateMessage(&msg);
 				DispatchMessage(&msg);
 			} else {
 				return(-1);
 			}
-		}
-		if ( posted ) {
 			return(1);
 		}
 	}
@@ -783,7 +700,7 @@ void DX5_InitOSKeymap(_THIS)
 	int i;
 
 	/* Map the DIK scancodes to SDL keysyms */
-	for ( i=0; i<SDL_arraysize(DIK_keymap); ++i )
+	for ( i=0; i<SDL_TABLESIZE(DIK_keymap); ++i )
 		DIK_keymap[i] = 0;
 
 	/* Defined DIK_* constants */
@@ -830,7 +747,7 @@ void DX5_InitOSKeymap(_THIS)
 	DIK_keymap[DIK_GRAVE] = SDLK_BACKQUOTE;
 	DIK_keymap[DIK_LSHIFT] = SDLK_LSHIFT;
 	DIK_keymap[DIK_BACKSLASH] = SDLK_BACKSLASH;
-	DIK_keymap[DIK_OEM_102] = SDLK_LESS;
+	DIK_keymap[DIK_OEM_102] = SDLK_BACKSLASH;
 	DIK_keymap[DIK_Z] = SDLK_z;
 	DIK_keymap[DIK_X] = SDLK_x;
 	DIK_keymap[DIK_C] = SDLK_c;
@@ -882,7 +799,7 @@ void DX5_InitOSKeymap(_THIS)
 	DIK_keymap[DIK_NUMPADENTER] = SDLK_KP_ENTER;
 	DIK_keymap[DIK_RCONTROL] = SDLK_RCTRL;
 	DIK_keymap[DIK_DIVIDE] = SDLK_KP_DIVIDE;
-	DIK_keymap[DIK_SYSRQ] = SDLK_PRINT;
+	DIK_keymap[DIK_SYSRQ] = SDLK_SYSREQ;
 	DIK_keymap[DIK_RMENU] = SDLK_RALT;
 	DIK_keymap[DIK_PAUSE] = SDLK_PAUSE;
 	DIK_keymap[DIK_HOME] = SDLK_HOME;
@@ -907,11 +824,11 @@ static SDL_keysym *TranslateKey(UINT scancode, SDL_keysym *keysym, int pressed)
 	keysym->sym = DIK_keymap[scancode];
 	keysym->mod = KMOD_NONE;
 	keysym->unicode = 0;
-	if ( pressed && SDL_TranslateUNICODE ) {
+	if ( pressed && SDL_TranslateUNICODE ) { /* Someday use ToUnicode() */
 		UINT vkey;
 #ifndef NO_GETKEYBOARDSTATE
-		BYTE	keystate[256];
-		Uint16	wchars[2];
+		BYTE keystate[256];
+		BYTE chars[2];
 #endif
 
 		vkey = MapVirtualKey(scancode, 1);
@@ -920,24 +837,16 @@ static SDL_keysym *TranslateKey(UINT scancode, SDL_keysym *keysym, int pressed)
 		keysym->unicode = vkey;
 #else
 		GetKeyboardState(keystate);
-		/* Numlock isn't taken into account in ToUnicode,
-		 * so we handle it as a special case here */
-		if ((keystate[VK_NUMLOCK] & 1) && vkey >= VK_NUMPAD0 && vkey <= VK_NUMPAD9)
-		{
-			keysym->unicode = vkey - VK_NUMPAD0 + '0';
+		if ( ToAscii(vkey,scancode,keystate,(WORD *)chars,0) == 1 ) {
+			keysym->unicode = chars[0];
 		}
-		else if (SDL_ToUnicode(vkey, scancode, keystate, wchars, sizeof(wchars)/sizeof(wchars[0]), 0) > 0)
-		{
-			keysym->unicode = wchars[0];
-		}
-#endif /* NO_GETKEYBOARDSTATE */
+#endif
 	}
 	return(keysym);
 }
 
 int DX5_CreateWindow(_THIS)
 {
-	char *windowid = SDL_getenv("SDL_WINDOWID");
 	int i;
 
 	/* Clear out DirectInput variables in case we fail */
@@ -947,11 +856,12 @@ int DX5_CreateWindow(_THIS)
 		SDL_DIfun[i] = NULL;
 	}
 
-	SDL_RegisterApp(NULL, 0, 0);
-
-	SDL_windowid = (windowid != NULL);
+#ifndef CS_BYTEALIGNCLIENT
+#define CS_BYTEALIGNCLIENT	0
+#endif
+	SDL_RegisterApp("SDL_app", CS_BYTEALIGNCLIENT, 0);
 	if ( SDL_windowid ) {
-		SDL_Window = (HWND)SDL_strtoull(windowid, NULL, 0);
+		SDL_Window = (HWND)strtol(SDL_windowid, NULL, 0);
 		if ( SDL_Window == NULL ) {
 			SDL_SetError("Couldn't get user specified window");
 			return(-1);
@@ -960,8 +870,8 @@ int DX5_CreateWindow(_THIS)
 		/* DJM: we want all event's for the user specified
 			window to be handled by SDL.
 		 */
-		userWindowProc = (WNDPROCTYPE)GetWindowLongPtr(SDL_Window, GWLP_WNDPROC);
-		SetWindowLongPtr(SDL_Window, GWLP_WNDPROC, (LONG_PTR)WinMessage);
+		userWindowProc = (WNDPROC)GetWindowLong(SDL_Window, GWL_WNDPROC);
+		SetWindowLong(SDL_Window, GWL_WNDPROC, (LONG)WinMessage);
 	} else {
 		SDL_Window = CreateWindow(SDL_Appname, SDL_Appname,
                         (WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX),
@@ -978,12 +888,6 @@ int DX5_CreateWindow(_THIS)
 		return(-1);
 	}
 
-	/* JC 14 Mar 2006
-		Flush the message loop or this can cause big problems later
-		Especially if the user decides to use dialog boxes or assert()!
-	*/
-	WIN_FlushMessageQueue();
-
 	/* Ready to roll */
 	return(0);
 }
@@ -995,15 +899,8 @@ void DX5_DestroyWindow(_THIS)
 
 	/* Destroy our window */
 	if ( SDL_windowid ) {
-		SetWindowLongPtr(SDL_Window, GWLP_WNDPROC, (LONG_PTR)userWindowProc);
+		SetWindowLong(SDL_Window, GWL_WNDPROC, (LONG)userWindowProc);
 	} else {
 		DestroyWindow(SDL_Window);
 	}
-	SDL_UnregisterApp();
-
-	/* JC 14 Mar 2006
-		Flush the message loop or this can cause big problems later
-		Especially if the user decides to use dialog boxes or assert()!
-	*/
-	WIN_FlushMessageQueue();
 }

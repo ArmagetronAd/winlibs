@@ -1,31 +1,37 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 /* Semaphore functions using the Win32 API */
 
-#define WIN32_LEAN_AND_MEAN
+#include <stdio.h>
+#include <stdlib.h>
 #include <windows.h>
 
+#include "SDL_error.h"
 #include "SDL_thread.h"
 #if defined(_WIN32_WCE) && (_WIN32_WCE < 300)
 #include "win_ce_semaphore.h"
@@ -48,7 +54,7 @@ SDL_sem *SDL_CreateSemaphore(Uint32 initial_value)
 	SDL_sem *sem;
 
 	/* Allocate sem memory */
-	sem = (SDL_sem *)SDL_malloc(sizeof(*sem));
+	sem = (SDL_sem *)malloc(sizeof(*sem));
 	if ( sem ) {
 		/* Create the semaphore, with max value 32K */
 #if defined(_WIN32_WCE) && (_WIN32_WCE < 300)
@@ -59,7 +65,7 @@ SDL_sem *SDL_CreateSemaphore(Uint32 initial_value)
 		sem->count = initial_value;
 		if ( ! sem->id ) {
 			SDL_SetError("Couldn't create semaphore");
-			SDL_free(sem);
+			free(sem);
 			sem = NULL;
 		}
 	} else {
@@ -80,7 +86,7 @@ void SDL_DestroySemaphore(SDL_sem *sem)
 #endif
 			sem->id = 0;
 		}
-		SDL_free(sem);
+		free(sem);
 	}
 }
 
@@ -105,7 +111,7 @@ int SDL_SemWaitTimeout(SDL_sem *sem, Uint32 timeout)
 	switch (WaitForSingleObject(sem->id, dwMilliseconds)) {
 #endif
 	    case WAIT_OBJECT_0:
-		InterlockedDecrement(&sem->count);
+		--sem->count;
 		retval = 0;
 		break;
 	    case WAIT_TIMEOUT:
@@ -150,13 +156,13 @@ int SDL_SemPost(SDL_sem *sem)
 	 * immediately get destroyed by another thread which
 	 * is waiting for this semaphore.
 	 */
-	InterlockedIncrement(&sem->count);
+	++sem->count;
 #if defined(_WIN32_WCE) && (_WIN32_WCE < 300)
 	if ( ReleaseSemaphoreCE(sem->id, 1, NULL) == FALSE ) {
 #else
 	if ( ReleaseSemaphore(sem->id, 1, NULL) == FALSE ) {
 #endif
-		InterlockedDecrement(&sem->count);	/* restore */
+		--sem->count;	/* restore */
 		SDL_SetError("ReleaseSemaphore() failed");
 		return -1;
 	}

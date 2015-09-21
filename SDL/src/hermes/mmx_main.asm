@@ -9,9 +9,9 @@
 
 BITS 32
 
-%include "common.inc"
+GLOBAL _ConvertMMX
+GLOBAL _mmxreturn
 
-SDL_FUNC _ConvertMMX
 
 SECTION .text
 		
@@ -50,8 +50,9 @@ _ConvertMMX:
 y_loop:	
 	mov ecx,[ebp+4]
 
-	call [ebp+32]
+	jmp [ebp+32]
 
+_mmxreturn:	
 	add esi,[ebp+12]
 	add edi,[ebp+28]
 	
@@ -69,6 +70,5 @@ endconvert:
 	
 	ret		
 
-%ifidn __OUTPUT_FORMAT__,elf
-section .note.GNU-stack noalloc noexec nowrite progbits
-%endif
+
+

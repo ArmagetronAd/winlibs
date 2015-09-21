@@ -1,56 +1,57 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 /* Gamma correction support */
 
-#ifdef HAVE_MATH_H
-#include <math.h>	/* Used for calculating gamma ramps */
-#else
-/* Math routines from uClibc: http://www.uclibc.org */
-#include "math_private.h"
-#include "e_sqrt.h"
-#include "e_pow.h"
-#include "e_log.h"
-#define pow(x, y)	__ieee754_pow(x, y)
-#define log(x)		__ieee754_log(x)
-#endif
+#define USE_MATH_H	/* Used for calculating gamma ramps */
 
+#ifdef USE_MATH_H
+#include <math.h>
+#endif
+#include <stdlib.h>
+#include <string.h>
+
+#include "SDL_error.h"
 #include "SDL_sysvideo.h"
 
-
+#ifdef USE_MATH_H
 static void CalculateGammaRamp(float gamma, Uint16 *ramp)
 {
 	int i;
 
 	/* 0.0 gamma is all black */
-	if ( gamma <= 0.0f ) {
+	if ( gamma <= 0.0 ) {
 		for ( i=0; i<256; ++i ) {
 			ramp[i] = 0;
 		}
 		return;
 	} else
 	/* 1.0 gamma is identity */
-	if ( gamma == 1.0f ) {
+	if ( gamma == 1.0 ) {
 		for ( i=0; i<256; ++i ) {
 			ramp[i] = (i << 8) | i;
 		}
@@ -73,7 +74,7 @@ static void CalculateGammaFromRamp(float *gamma, Uint16 *ramp)
 	/* The following is adapted from a post by Garrett Bass on OpenGL
 	   Gamedev list, March 4, 2000.
 	 */
-	float sum = 0.0f;
+	float sum = 0.0;
 	int i, count = 0;
 
 	*gamma = 1.0;
@@ -85,10 +86,11 @@ static void CalculateGammaFromRamp(float *gamma, Uint16 *ramp)
 	        count++;
 	    }
 	}
-	if ( count && sum > 0.0f ) {
+	if ( count && sum ) {
 		*gamma = 1.0f / (sum / count);
 	}
 }
+#endif /* USE_MATH_H */
 
 int SDL_SetGamma(float red, float green, float blue)
 {
@@ -97,6 +99,7 @@ int SDL_SetGamma(float red, float green, float blue)
 	SDL_VideoDevice *this  = current_video;	
 
 	succeeded = -1;
+#ifdef USE_MATH_H
 	/* Prefer using SetGammaRamp(), as it's more flexible */
 	{
 		Uint16 ramp[3][256];
@@ -106,6 +109,9 @@ int SDL_SetGamma(float red, float green, float blue)
 		CalculateGammaRamp(blue, ramp[2]);
 		succeeded = SDL_SetGammaRamp(ramp[0], ramp[1], ramp[2]);
 	}
+#else
+	SDL_SetError("Gamma correction not supported");
+#endif
 	if ( (succeeded < 0) && video->SetGamma ) {
 		SDL_ClearError();
 		succeeded = video->SetGamma(this, red, green, blue);
@@ -123,6 +129,7 @@ int SDL_GetGamma(float *red, float *green, float *blue)
 	SDL_VideoDevice *this  = current_video;	
 
 	succeeded = -1;
+#ifdef USE_MATH_H
 	/* Prefer using GetGammaRamp(), as it's more flexible */
 	{
 		Uint16 ramp[3][256];
@@ -134,6 +141,9 @@ int SDL_GetGamma(float *red, float *green, float *blue)
 			CalculateGammaFromRamp(blue, ramp[2]);
 		}
 	}
+#else
+	SDL_SetError("Gamma correction not supported");
+#endif
 	if ( (succeeded < 0) && video->GetGamma ) {
 		SDL_ClearError();
 		succeeded = video->GetGamma(this, red, green, blue);
@@ -161,13 +171,13 @@ int SDL_SetGammaRamp(const Uint16 *red, const Uint16 *green, const Uint16 *blue)
 
 	/* Fill the gamma table with the new values */
 	if ( red ) {
-		SDL_memcpy(&video->gamma[0*256], red, 256*sizeof(*video->gamma));
+		memcpy(&video->gamma[0*256], red, 256*sizeof(*video->gamma));
 	}
 	if ( green ) {
-		SDL_memcpy(&video->gamma[1*256], green, 256*sizeof(*video->gamma));
+		memcpy(&video->gamma[1*256], green, 256*sizeof(*video->gamma));
 	}
 	if ( blue ) {
-		SDL_memcpy(&video->gamma[2*256], blue, 256*sizeof(*video->gamma));
+		memcpy(&video->gamma[2*256], blue, 256*sizeof(*video->gamma));
 	}
 
 	/* Gamma correction always possible on split palettes */
@@ -200,7 +210,7 @@ int SDL_GetGammaRamp(Uint16 *red, Uint16 *green, Uint16 *blue)
 
 	/* Lazily allocate the gamma table */
 	if ( ! video->gamma ) {
-		video->gamma = SDL_malloc(3*256*sizeof(*video->gamma));
+		video->gamma = malloc(3*256*sizeof(*video->gamma));
 		if ( ! video->gamma ) {
 			SDL_OutOfMemory();
 			return -1;
@@ -221,13 +231,13 @@ int SDL_GetGammaRamp(Uint16 *red, Uint16 *green, Uint16 *blue)
 
 	/* Just copy from our internal table */
 	if ( red ) {
-		SDL_memcpy(red, &video->gamma[0*256], 256*sizeof(*red));
+		memcpy(red, &video->gamma[0*256], 256*sizeof(*red));
 	}
 	if ( green ) {
-		SDL_memcpy(green, &video->gamma[1*256], 256*sizeof(*green));
+		memcpy(green, &video->gamma[1*256], 256*sizeof(*green));
 	}
 	if ( blue ) {
-		SDL_memcpy(blue, &video->gamma[2*256], 256*sizeof(*blue));
+		memcpy(blue, &video->gamma[2*256], 256*sizeof(*blue));
 	}
 	return 0;
 }

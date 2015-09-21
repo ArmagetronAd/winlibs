@@ -1,26 +1,34 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
 
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <malloc.h>
+#include <windows.h>
 #include "directx.h"
 
 /* Not yet in the mingw32 cross-compile headers */
@@ -28,18 +36,19 @@
 #define CDS_FULLSCREEN	4
 #endif
 
+#include "SDL_error.h"
 #include "SDL_timer.h"
 #include "SDL_events.h"
 #include "SDL_syswm.h"
-#include "../SDL_sysvideo.h"
-#include "../SDL_blit.h"
-#include "../SDL_pixels_c.h"
+#include "SDL_sysvideo.h"
+#include "SDL_blit.h"
+#include "SDL_pixels_c.h"
 #include "SDL_dx5video.h"
-#include "../wincommon/SDL_syswm_c.h"
-#include "../wincommon/SDL_sysmouse_c.h"
+#include "SDL_syswm_c.h"
+#include "SDL_sysmouse_c.h"
 #include "SDL_dx5events_c.h"
 #include "SDL_dx5yuv_c.h"
-#include "../wincommon/SDL_wingl_c.h"
+#include "SDL_wingl_c.h"
 
 #ifdef _WIN32_WCE
 #define NO_CHANGEDISPLAYSETTINGS
@@ -332,7 +341,7 @@ static DIOBJECTDATAFORMAT KBD_fmt[] = {
 	{ &GUID_Key, 255, 0x8000FF0C, 0x00000000 },
 };
 
-const DIDATAFORMAT c_dfDIKeyboard = { sizeof(DIDATAFORMAT), sizeof(DIOBJECTDATAFORMAT), 0x00000002, 256, 256, KBD_fmt };
+const DIDATAFORMAT c_dfDIKeyboard = { 24, 16, 0x00000002, 256, 256, KBD_fmt };
 
 
 /* Mouse */
@@ -341,29 +350,13 @@ static DIOBJECTDATAFORMAT PTR_fmt[] = {
 	{ &GUID_XAxis, 0, 0x00FFFF03, 0x00000000 },
 	{ &GUID_YAxis, 4, 0x00FFFF03, 0x00000000 },
 	{ &GUID_ZAxis, 8, 0x80FFFF03, 0x00000000 },
-	{ NULL,       12, 0x00FFFF0C, 0x00000000 },
-	{ NULL,       13, 0x00FFFF0C, 0x00000000 },
-	{ NULL,       14, 0x80FFFF0C, 0x00000000 },
-	{ NULL,       15, 0x80FFFF0C, 0x00000000 },
+	{ NULL, 12, 0x00FFFF0C, 0x00000000 },
+	{ NULL, 13, 0x00FFFF0C, 0x00000000 },
+	{ NULL, 14, 0x80FFFF0C, 0x00000000 },
+	{ NULL, 15, 0x80FFFF0C, 0x00000000 },
 };
 
-const DIDATAFORMAT c_dfDIMouse = { sizeof(DIDATAFORMAT), sizeof(DIOBJECTDATAFORMAT), 0x00000002, 16, 7, PTR_fmt };
-
-static DIOBJECTDATAFORMAT PTR2_fmt[] = {
-	{ &GUID_XAxis, 0, 0x00FFFF03, 0x00000000 },
-	{ &GUID_YAxis, 4, 0x00FFFF03, 0x00000000 },
-	{ &GUID_ZAxis, 8, 0x80FFFF03, 0x00000000 },
-	{ NULL,       12, 0x00FFFF0C, 0x00000000 },
-	{ NULL,       13, 0x00FFFF0C, 0x00000000 },
-	{ NULL,       14, 0x80FFFF0C, 0x00000000 },
-	{ NULL,       15, 0x80FFFF0C, 0x00000000 },
-	{ NULL,       16, 0x80FFFF0C, 0x00000000 },
-	{ NULL,       17, 0x80FFFF0C, 0x00000000 },
-	{ NULL,       18, 0x80FFFF0C, 0x00000000 },
-	{ NULL,       19, 0x80FFFF0C, 0x00000000 }
-};
-
-const DIDATAFORMAT c_dfDIMouse2 = { sizeof(DIDATAFORMAT), sizeof(DIOBJECTDATAFORMAT), 0x00000002, 20, 11, PTR2_fmt };
+const DIDATAFORMAT c_dfDIMouse = { 24, 16, 0x00000002, 16, 7, PTR_fmt };
 
 
 /* Joystick */
@@ -415,7 +408,7 @@ static DIOBJECTDATAFORMAT JOY_fmt[] = {
 	{ NULL, 79, 0x80FFFF0C, 0x00000000 },
 };
 
-const DIDATAFORMAT c_dfDIJoystick = { sizeof(DIDATAFORMAT), sizeof(DIOBJECTDATAFORMAT), 0x00000001, 80, 44, JOY_fmt };
+const DIDATAFORMAT c_dfDIJoystick = { 24, 16, 0x00000001, 80, 44, JOY_fmt };
 
 
 /* Initialization/Query functions */
@@ -443,7 +436,6 @@ static int DX5_AllocDDSurface(_THIS, SDL_Surface *surface,
 				LPDIRECTDRAWSURFACE3 requested, Uint32 flag);
 
 /* Windows message handling functions */
-static void DX5_Activate(_THIS, BOOL active, BOOL minimized);
 static void DX5_RealizePalette(_THIS);
 static void DX5_PaletteChanged(_THIS, HWND window);
 static void DX5_WinPAINT(_THIS, HDC hdc);
@@ -486,7 +478,7 @@ static int DX5_Available(void)
 	      LPDIRECTDRAWSURFACE3 DDrawSurf3;
 
 	      /* Try to create a DirectDrawSurface3 object */
-	      SDL_memset(&desc, 0, sizeof(desc));
+	      memset(&desc, 0, sizeof(desc));
 	      desc.dwSize = sizeof(desc);
 	      desc.dwFlags = DDSD_CAPS;
 	      desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE|DDSCAPS_VIDEOMEMORY;
@@ -560,12 +552,12 @@ static void DX5_DeleteDevice(SDL_VideoDevice *this)
 	DX5_Unload();
 	if ( this ) {
 		if ( this->hidden ) {
-			SDL_free(this->hidden);
+			free(this->hidden);
 		}
 		if ( this->gl_data ) {
-			SDL_free(this->gl_data);
+			free(this->gl_data);
 		}
-		SDL_free(this);
+		free(this);
 	}
 }
 
@@ -579,13 +571,13 @@ static SDL_VideoDevice *DX5_CreateDevice(int devindex)
 	}
 
 	/* Initialize all variables that we clean on shutdown */
-	device = (SDL_VideoDevice *)SDL_malloc(sizeof(SDL_VideoDevice));
+	device = (SDL_VideoDevice *)malloc(sizeof(SDL_VideoDevice));
 	if ( device ) {
-		SDL_memset(device, 0, (sizeof *device));
+		memset(device, 0, (sizeof *device));
 		device->hidden = (struct SDL_PrivateVideoData *)
-				SDL_malloc((sizeof *device->hidden));
+				malloc((sizeof *device->hidden));
 		device->gl_data = (struct SDL_PrivateGLData *)
-				SDL_malloc((sizeof *device->gl_data));
+				malloc((sizeof *device->gl_data));
 	}
 	if ( (device == NULL) || (device->hidden == NULL) ||
 		                 (device->gl_data == NULL) ) {
@@ -593,8 +585,8 @@ static SDL_VideoDevice *DX5_CreateDevice(int devindex)
 		DX5_DeleteDevice(device);
 		return(NULL);
 	}
-	SDL_memset(device->hidden, 0, (sizeof *device->hidden));
-	SDL_memset(device->gl_data, 0, (sizeof *device->gl_data));
+	memset(device->hidden, 0, (sizeof *device->hidden));
+	memset(device->gl_data, 0, (sizeof *device->gl_data));
 
 	/* Set the function pointers */
 	device->VideoInit = DX5_VideoInit;
@@ -616,7 +608,7 @@ static SDL_VideoDevice *DX5_CreateDevice(int devindex)
 	device->FreeHWSurface = DX5_FreeHWSurface;
 	device->SetGammaRamp = DX5_SetGammaRamp;
 	device->GetGammaRamp = DX5_GetGammaRamp;
-#if SDL_VIDEO_OPENGL
+#ifdef HAVE_OPENGL
 	device->GL_LoadLibrary = WIN_GL_LoadLibrary;
 	device->GL_GetProcAddress = WIN_GL_GetProcAddress;
 	device->GL_GetAttribute = WIN_GL_GetAttribute;
@@ -637,7 +629,6 @@ static SDL_VideoDevice *DX5_CreateDevice(int devindex)
 	device->PumpEvents = DX5_PumpEvents;
 
 	/* Set up the windows message handling functions */
-	WIN_Activate = DX5_Activate;
 	WIN_RealizePalette = DX5_RealizePalette;
 	WIN_PaletteChanged = DX5_PaletteChanged;
 	WIN_WinPAINT = DX5_WinPAINT;
@@ -654,16 +645,6 @@ VideoBootStrap DIRECTX_bootstrap = {
 	DX5_Available, DX5_CreateDevice
 };
 
-static int cmpmodes(const void *va, const void *vb)
-{
-    SDL_Rect *a = *(SDL_Rect **)va;
-    SDL_Rect *b = *(SDL_Rect **)vb;
-    if ( a->w == b->w )
-        return b->h - a->h;
-    else
-        return b->w - a->w;
-}
-
 static HRESULT WINAPI EnumModes2(DDSURFACEDESC *desc, VOID *udata)
 {
 	SDL_VideoDevice *this = (SDL_VideoDevice *)udata;
@@ -675,14 +656,6 @@ static HRESULT WINAPI EnumModes2(DDSURFACEDESC *desc, VOID *udata)
 	int bpp = desc->ddpfPixelFormat.dwRGBBitCount;
 	int refreshRate = desc->dwRefreshRate;
 #endif
-	int maxRefreshRate;
-
-	if ( desc->dwWidth <= SDL_desktop_mode.dmPelsWidth &&
-	     desc->dwHeight <= SDL_desktop_mode.dmPelsHeight ) {
-		maxRefreshRate = SDL_desktop_mode.dmDisplayFrequency;
-	} else {
-		maxRefreshRate = 85;	/* safe value? */
-	}
 
 	switch (bpp)  {
 		case 8:
@@ -694,7 +667,7 @@ static HRESULT WINAPI EnumModes2(DDSURFACEDESC *desc, VOID *udata)
 			     enumlists[bpp]->r.w == (Uint16)desc->dwWidth &&
 			     enumlists[bpp]->r.h == (Uint16)desc->dwHeight ) {
 				if ( refreshRate > enumlists[bpp]->refreshRate &&
-				     refreshRate <= maxRefreshRate ) {
+				     refreshRate <= 85 /* safe value? */ ) {
 					enumlists[bpp]->refreshRate = refreshRate;
 #ifdef DDRAW_DEBUG
  fprintf(stderr, "New refresh rate for %d bpp: %dx%d at %d Hz\n", (bpp+1)*8, (int)desc->dwWidth, (int)desc->dwHeight, refreshRate);
@@ -703,7 +676,7 @@ static HRESULT WINAPI EnumModes2(DDSURFACEDESC *desc, VOID *udata)
 				break;
 			}
 			++SDL_nummodes[bpp];
-			enumrect = (struct DX5EnumRect*)SDL_malloc(sizeof(struct DX5EnumRect));
+			enumrect = (struct DX5EnumRect*)malloc(sizeof(struct DX5EnumRect));
 			if ( !enumrect ) {
 				SDL_OutOfMemory();
 				return(DDENUMRET_CANCEL);
@@ -834,13 +807,12 @@ void SetDDerror(const char *function, int code)
 			error = "Interface not present";
 			break;
 		default:
-			SDL_snprintf(errbuf, SDL_arraysize(errbuf),
-			         "%s: Unknown DirectDraw error: 0x%x",
+			sprintf(errbuf, "%s: Unknown DirectDraw error: 0x%x",
 								function, code);
 			break;
 	}
 	if ( ! errbuf[0] ) {
-		SDL_snprintf(errbuf, SDL_arraysize(errbuf), "%s: %s", function, error);
+		sprintf(errbuf, "%s: %s", function, error);
 	}
 	SDL_SetError("%s", errbuf);
 	return;
@@ -862,7 +834,7 @@ static int DX5_UpdateVideoInfo(_THIS)
 	HRESULT result;
 
 	/* Fill in our hardware acceleration capabilities */
-	SDL_memset(&DDCaps, 0, sizeof(DDCaps));
+	memset(&DDCaps, 0, sizeof(DDCaps));
 	DDCaps.dwSize = sizeof(DDCaps);
 	result = IDirectDraw2_GetCaps(ddraw2, (DDCAPS *)&DDCaps, NULL);
 	if ( result != DD_OK ) {
@@ -930,8 +902,7 @@ int DX5_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	if ( DX5_CreateWindow(this) < 0 ) {
 		return(-1);
 	}
-
-#if !SDL_AUDIO_DISABLED
+#ifndef DISABLE_AUDIO
 	DX5_SoundFocus(SDL_Window);
 #endif
 
@@ -955,13 +926,6 @@ int DX5_VideoInit(_THIS, SDL_PixelFormat *vformat)
 					GetDeviceCaps(hdc,BITSPIXEL);
 	ReleaseDC(SDL_Window, hdc);
 
-#ifndef NO_CHANGEDISPLAYSETTINGS
-	/* Query for the desktop resolution */
-	EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &SDL_desktop_mode);
-	this->info.current_w = SDL_desktop_mode.dmPelsWidth;
-	this->info.current_h = SDL_desktop_mode.dmPelsHeight;
-#endif
-
 	/* Enumerate the available fullscreen modes */
 	for ( i=0; i<NUM_MODELISTS; ++i )
 		enumlists[i] = NULL;
@@ -974,7 +938,7 @@ int DX5_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	for ( i=0; i<NUM_MODELISTS; ++i ) {
 		struct DX5EnumRect *rect;
 		SDL_modelist[i] = (SDL_Rect **)
-				SDL_malloc((SDL_nummodes[i]+1)*sizeof(SDL_Rect *));
+				malloc((SDL_nummodes[i]+1)*sizeof(SDL_Rect *));
 		if ( SDL_modelist[i] == NULL ) {
 			SDL_OutOfMemory();
 			return(-1);
@@ -983,10 +947,6 @@ int DX5_VideoInit(_THIS, SDL_PixelFormat *vformat)
 			SDL_modelist[i][j] = &rect->r;
 		}
 		SDL_modelist[i][j] = NULL;
-
-		if ( SDL_nummodes[i] > 0 ) {
-			SDL_qsort(SDL_modelist[i], SDL_nummodes[i], sizeof *SDL_modelist[i], cmpmodes);
-		}
 	}
 	
 	/* Fill in some window manager capabilities */
@@ -1034,7 +994,6 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 				int width, int height, int bpp, Uint32 flags)
 {
 	SDL_Surface *video;
-	int prev_w, prev_h;
 	HRESULT result;
 	DWORD sharemode;
 	DWORD style;
@@ -1044,11 +1003,11 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 			(WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX);
 	const DWORD resizestyle =
 			(WS_THICKFRAME|WS_MAXIMIZEBOX);
+	int windowX, windowY;
 	DDSURFACEDESC ddsd;
 	LPDIRECTDRAWSURFACE  dd_surface1;
 	LPDIRECTDRAWSURFACE3 dd_surface3;
 
-	SDL_resizing = 1;
 #ifdef DDRAW_DEBUG
  fprintf(stderr, "Setting %dx%dx%d video mode\n", width, height, bpp);
 #endif
@@ -1077,6 +1036,8 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 
 	/* If we are setting a GL mode, use GDI, not DirectX (yuck) */
 	if ( flags & SDL_OPENGL ) {
+		RECT bounds;
+		int x, y;
 		Uint32 Rmask, Gmask, Bmask;
 
 		/* Recalculate the bitmasks if necessary */
@@ -1120,8 +1081,6 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 		}
 
 		/* Fill in part of the video surface */
-		prev_w = video->w;
-		prev_h = video->h;
 		video->flags = 0;	/* Clear flags */
 		video->w = width;
 		video->h = height;
@@ -1136,25 +1095,14 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 		 */
 		if ( (flags & SDL_FULLSCREEN) == SDL_FULLSCREEN ) {
 			DEVMODE settings;
-			BOOL changed;
 
-			SDL_memset(&settings, 0, sizeof(DEVMODE));
+			memset(&settings, 0, sizeof(DEVMODE));
 			settings.dmSize = sizeof(DEVMODE);
 			settings.dmBitsPerPel = video->format->BitsPerPixel;
 			settings.dmPelsWidth = width;
 			settings.dmPelsHeight = height;
 			settings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
-			if ( width <= (int)SDL_desktop_mode.dmPelsWidth &&
-			     height <= (int)SDL_desktop_mode.dmPelsHeight ) {
-				settings.dmDisplayFrequency = SDL_desktop_mode.dmDisplayFrequency;
-				settings.dmFields |= DM_DISPLAYFREQUENCY;
-			}
-			changed = (ChangeDisplaySettings(&settings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
-			if ( ! changed && (settings.dmFields & DM_DISPLAYFREQUENCY) ) {
-				settings.dmFields &= ~DM_DISPLAYFREQUENCY;
-				changed = (ChangeDisplaySettings(&settings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL);
-			}
-			if ( changed ) {
+			if ( ChangeDisplaySettings(&settings, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL ) {
 				video->flags |= SDL_FULLSCREEN;
 				SDL_fullscreen_mode = settings;
 			}
@@ -1185,38 +1133,36 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 		}
 
 		/* DJM: Don't piss of anyone who has setup his own window */
-		if ( !SDL_windowid )
+		if ( SDL_windowid == NULL )
 			SetWindowLong(SDL_Window, GWL_STYLE, style);
 
 		/* Resize the window (copied from SDL WinDIB driver) */
-		if ( !SDL_windowid && !IsZoomed(SDL_Window) ) {
-			RECT bounds;
-			int x, y;
+		if ( SDL_windowid == NULL ) {
 			HWND top;
 			UINT swp_flags;
-			const char *window = NULL;
-			const char *center = NULL;
+			const char *window = getenv("SDL_VIDEO_WINDOW_POS");
+			const char *center = getenv("SDL_VIDEO_CENTERED");
 
-			if ( video->w != prev_w || video->h != prev_h ) {
-				window = SDL_getenv("SDL_VIDEO_WINDOW_POS");
-				center = SDL_getenv("SDL_VIDEO_CENTERED");
+			if ( !SDL_windowX && !SDL_windowY ) {
 				if ( window ) {
-					if ( SDL_sscanf(window, "%d,%d", &x, &y) == 2 ) {
+					if ( sscanf(window, "%d,%d", &x, &y) == 2 ) {
 						SDL_windowX = x;
 						SDL_windowY = y;
 					}
-					if ( SDL_strcmp(window, "center") == 0 ) {
+					if ( strcmp(window, "center") == 0 ) {
 						center = window;
+						window = NULL;
 					}
 				}
 			}
 			swp_flags = (SWP_NOCOPYBITS | SWP_SHOWWINDOW);
 
+			SDL_resizing = 1;
 			bounds.left = SDL_windowX;
 			bounds.top = SDL_windowY;
 			bounds.right = SDL_windowX+video->w;
 			bounds.bottom = SDL_windowY+video->h;
-			AdjustWindowRectEx(&bounds, GetWindowLong(SDL_Window, GWL_STYLE), (GetMenu(SDL_Window) != NULL), 0);
+			AdjustWindowRectEx(&bounds, GetWindowLong(SDL_Window, GWL_STYLE), FALSE, 0);
 			width = bounds.right-bounds.left;
 			height = bounds.bottom-bounds.top;
 			if ( (flags & SDL_FULLSCREEN) ) {
@@ -1232,19 +1178,18 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 				x = y = -1;
 				swp_flags |= SWP_NOMOVE;
 			}
+			if ( y < 0 ) { /* Cover up title bar for more client area */
+				y -= GetSystemMetrics(SM_CYCAPTION)/2;
+			}
 			if ( flags & SDL_FULLSCREEN ) {
 				top = HWND_TOPMOST;
 			} else {
 				top = HWND_NOTOPMOST;
 			}
 			SetWindowPos(SDL_Window, top, x, y, width, height, swp_flags);
-			if ( !(flags & SDL_FULLSCREEN) ) {
-				SDL_windowX = SDL_bounds.left;
-				SDL_windowY = SDL_bounds.top;
-			}
+			SDL_resizing = 0;
 			SetForegroundWindow(SDL_Window);
 		}
-		SDL_resizing = 0;
 
 		/* Set up for OpenGL */
 		if ( WIN_GL_SetupWindow(this) < 0 ) {
@@ -1255,6 +1200,8 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 	}
 
 	/* Set the appropriate window style */
+	windowX = SDL_windowX;
+	windowY = SDL_windowY;
 	style = GetWindowLong(SDL_Window, GWL_STYLE);
 	style &= ~(resizestyle|WS_MAXIMIZE);
 	if ( (flags & SDL_FULLSCREEN) == SDL_FULLSCREEN ) {
@@ -1276,7 +1223,7 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 #endif
 	}
 	/* DJM: Don't piss of anyone who has setup his own window */
-	if ( !SDL_windowid )
+	if ( SDL_windowid == NULL )
 		SetWindowLong(SDL_Window, GWL_STYLE, style);
 
 	/* Set DirectDraw sharing mode.. exclusive when fullscreen */
@@ -1290,6 +1237,8 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 		SetDDerror("DirectDraw2::SetCooperativeLevel", result);
 		return(NULL);
 	}
+	SDL_windowX = windowX;
+	SDL_windowY = windowY;
 
 	/* Set the display mode, if we are in fullscreen mode */
 	if ( (flags & SDL_FULLSCREEN) == SDL_FULLSCREEN ) {
@@ -1298,15 +1247,17 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 		int maxRefreshRate;
 
 		/* Cover up desktop during mode change */
+		SDL_resizing = 1;
 		bounds.left = 0;
 		bounds.top = 0;
 		bounds.right = GetSystemMetrics(SM_CXSCREEN);
 		bounds.bottom = GetSystemMetrics(SM_CYSCREEN);
-		AdjustWindowRectEx(&bounds, GetWindowLong(SDL_Window, GWL_STYLE), (GetMenu(SDL_Window) != NULL), 0);
+		AdjustWindowRectEx(&bounds, GetWindowLong(SDL_Window, GWL_STYLE), FALSE, 0);
 		SetWindowPos(SDL_Window, HWND_TOPMOST,
 			bounds.left, bounds.top, 
 			bounds.right - bounds.left,
 			bounds.bottom - bounds.top, SWP_NOCOPYBITS);
+		SDL_resizing = 0;
 		ShowWindow(SDL_Window, SW_SHOW);
 		while ( GetForegroundWindow() != SDL_Window ) {
 			SetForegroundWindow(SDL_Window);
@@ -1341,7 +1292,7 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 	DX5_UpdateVideoInfo(this);
 
 	/* Create a primary DirectDraw surface */
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	ddsd.dwFlags = DDSD_CAPS;
 	ddsd.ddsCaps.dwCaps = (DDSCAPS_PRIMARYSURFACE|DDSCAPS_VIDEOMEMORY);
@@ -1375,7 +1326,7 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 	IDirectDrawSurface_Release(dd_surface1);
 
 	/* Get the format of the primary DirectDraw surface */
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	ddsd.dwFlags = DDSD_PIXELFORMAT|DDSD_CAPS;
 	result = IDirectDrawSurface3_GetSurfaceDesc(SDL_primary, &ddsd);
@@ -1473,8 +1424,6 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 			SDL_OutOfMemory();
 			return(NULL);
 		}
-		prev_w = video->w;
-		prev_h = video->h;
 		video->w = width;
 		video->h = height;
 		video->pitch = 0;
@@ -1502,7 +1451,7 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 			video->pitch = (width*video->format->BytesPerPixel);
 			/* Pitch needs to be QWORD (8-byte) aligned */
 			video->pitch = (video->pitch + 7) & ~7;
-			video->pixels = (void *)SDL_malloc(video->h*video->pitch);
+			video->pixels = (void *)malloc(video->h*video->pitch);
 			if ( video->pixels == NULL ) {
 				if ( video != current ) {
 					SDL_FreeSurface(video);
@@ -1530,7 +1479,7 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 	} else {
 		/* Necessary if we're going from window to fullscreen */
 		if ( video->pixels != NULL ) {
-			SDL_free(video->pixels);
+			free(video->pixels);
 			video->pixels = NULL;
 		}
 		dd_surface3 = SDL_primary;
@@ -1564,6 +1513,12 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 
 	/* Make our window the proper size, set the clipper, then show it */
 	if ( (flags & SDL_FULLSCREEN) != SDL_FULLSCREEN ) {
+		RECT bounds;
+		int  x, y;
+		UINT swp_flags;
+		const char *window = getenv("SDL_VIDEO_WINDOW_POS");
+		const char *center = getenv("SDL_VIDEO_CENTERED");
+
 		/* Create and set a clipper on our primary surface */
 		if ( SDL_clipper == NULL ) {
 			result = IDirectDraw2_CreateClipper(ddraw2,
@@ -1594,61 +1549,50 @@ SDL_Surface *DX5_SetVideoMode(_THIS, SDL_Surface *current,
 			return(NULL);
 		}
 
-		/* Resize the window (copied from SDL WinDIB driver) */
-		if ( !SDL_windowid && !IsZoomed(SDL_Window) ) {
-			RECT bounds;
-			int  x, y;
-			UINT swp_flags;
-			const char *window = NULL;
-			const char *center = NULL;
-
-			if ( video->w != prev_w || video->h != prev_h ) {
-				window = SDL_getenv("SDL_VIDEO_WINDOW_POS");
-				center = SDL_getenv("SDL_VIDEO_CENTERED");
-				if ( window ) {
-					if ( SDL_sscanf(window, "%d,%d", &x, &y) == 2 ) {
-						SDL_windowX = x;
-						SDL_windowY = y;
-					}
-					if ( SDL_strcmp(window, "center") == 0 ) {
-						center = window;
-					}
+		if ( !SDL_windowX && !SDL_windowY ) {
+			if ( window ) {
+				if ( sscanf(window, "%d,%d", &x, &y) == 2 ) {
+					SDL_windowX = x;
+					SDL_windowY = y;
+				}
+				if ( strcmp(window, "center") == 0 ) {
+					center = window;
+					window = NULL;
 				}
 			}
-			swp_flags = SWP_NOCOPYBITS;
-
-			bounds.left = SDL_windowX;
-			bounds.top = SDL_windowY;
-			bounds.right = SDL_windowX+video->w;
-			bounds.bottom = SDL_windowY+video->h;
-			AdjustWindowRectEx(&bounds, GetWindowLong(SDL_Window, GWL_STYLE), (GetMenu(SDL_Window) != NULL), 0);
-			width = bounds.right-bounds.left;
-			height = bounds.bottom-bounds.top;
-			if ( center ) {
-				x = (GetSystemMetrics(SM_CXSCREEN)-width)/2;
-				y = (GetSystemMetrics(SM_CYSCREEN)-height)/2;
-			} else if ( SDL_windowX || SDL_windowY || window ) {
-				x = bounds.left;
-				y = bounds.top;
-			} else {
-				x = y = -1;
-				swp_flags |= SWP_NOMOVE;
-			}
-			SetWindowPos(SDL_Window, HWND_NOTOPMOST, x, y, width, height, swp_flags);
-			SDL_windowX = SDL_bounds.left;
-			SDL_windowY = SDL_bounds.top;
 		}
+		swp_flags = SWP_NOCOPYBITS;
+
+		SDL_resizing = 1;
+		bounds.left = SDL_windowX;
+		bounds.top = SDL_windowY;
+		bounds.right = SDL_windowX+video->w;
+		bounds.bottom = SDL_windowY+video->h;
+		AdjustWindowRectEx(&bounds, GetWindowLong(SDL_Window, GWL_STYLE), FALSE, 0);
+		width = bounds.right-bounds.left;
+		height = bounds.bottom-bounds.top;
+		if ( (flags & SDL_FULLSCREEN) ) {
+			x = (GetSystemMetrics(SM_CXSCREEN)-width)/2;
+			y = (GetSystemMetrics(SM_CYSCREEN)-height)/2;
+		} else if ( center ) {
+			x = (GetSystemMetrics(SM_CXSCREEN)-width)/2;
+			y = (GetSystemMetrics(SM_CYSCREEN)-height)/2;
+		} else if ( SDL_windowX || SDL_windowY || window ) {
+			x = bounds.left;
+			y = bounds.top;
+		} else {
+			x = y = -1;
+			swp_flags |= SWP_NOMOVE;
+		}
+		if ( y < 0 ) { /* Cover up title bar for more client area */
+			y -= GetSystemMetrics(SM_CYCAPTION)/2;
+		}
+		SetWindowPos(SDL_Window, HWND_NOTOPMOST, x, y, width, height, swp_flags);
+		SDL_resizing = 0;
 
 	}
 	ShowWindow(SDL_Window, SW_SHOW);
 	SetForegroundWindow(SDL_Window);
-	SDL_resizing = 0;
-
-	/* JC 14 Mar 2006
-		Flush the message loop or this can cause big problems later
-		Especially if the user decides to use dialog boxes or assert()!
-	*/
-	WIN_FlushMessageQueue();
 
 	/* We're live! */
 	return(video);
@@ -1672,7 +1616,7 @@ static int DX5_AllocDDSurface(_THIS, SDL_Surface *surface,
 
 	/* Allocate the hardware acceleration data */
 	surface->hwdata = (struct private_hwdata *)
-					SDL_malloc(sizeof(*surface->hwdata));
+					malloc(sizeof(*surface->hwdata));
 	if ( surface->hwdata == NULL ) {
 		SDL_OutOfMemory();
 		return(-1);
@@ -1680,7 +1624,7 @@ static int DX5_AllocDDSurface(_THIS, SDL_Surface *surface,
 	dd_surface3 = NULL;
 
 	/* Set up the surface description */
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	ddsd.dwFlags = (DDSD_WIDTH|DDSD_HEIGHT|DDSD_CAPS|
 					DDSD_PITCH|DDSD_PIXELFORMAT);
@@ -1763,7 +1707,7 @@ static int DX5_AllocDDSurface(_THIS, SDL_Surface *surface,
 	}
 
 	/* Make sure the surface format was set properly */
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	result = IDirectDrawSurface3_Lock(dd_surface3, NULL,
 		&ddsd, (DDLOCK_NOSYSLOCK|DDLOCK_WAIT), NULL);
@@ -1847,7 +1791,7 @@ error_end:
 	if ( (dd_surface3 != NULL) && (dd_surface3 != requested) ) {
 		IDirectDrawSurface_Release(dd_surface3);
 	}
-	SDL_free(surface->hwdata);
+	free(surface->hwdata);
 	surface->hwdata = NULL;
 	return(-1);
 }
@@ -1868,7 +1812,7 @@ void PrintSurface(char *title, LPDIRECTDRAWSURFACE3 surface, Uint32 flags)
 	DDSURFACEDESC ddsd;
 
 	/* Lock and load! */
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	if ( IDirectDrawSurface3_Lock(surface, NULL, &ddsd,
 			(DDLOCK_NOSYSLOCK|DDLOCK_WAIT), NULL) != DD_OK ) {
@@ -2056,7 +2000,7 @@ static int DX5_LockHWSurface(_THIS, SDL_Surface *surface)
 
 	/* Lock and load! */
 	dd_surface = surface->hwdata->dd_writebuf;
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	result = IDirectDrawSurface3_Lock(dd_surface, NULL, &ddsd,
 					(DDLOCK_NOSYSLOCK|DDLOCK_WAIT), NULL);
@@ -2124,7 +2068,7 @@ static void DX5_FreeHWSurface(_THIS, SDL_Surface *surface)
 		if ( surface->hwdata->dd_surface != SDL_primary ) {
 			IDirectDrawSurface3_Release(surface->hwdata->dd_surface);
 		}
-		SDL_free(surface->hwdata);
+		free(surface->hwdata);
 		surface->hwdata = NULL;
 	}
 }
@@ -2214,13 +2158,13 @@ static void DX5_CompressPalette(_THIS, SDL_Color *colors, int ncolors, int maxco
 	}
 #else
 	/* Allocate memory for the arrays we use */
-	pool = SDL_stack_alloc(int, 2*ncolors);
+	pool = (int *)alloca(2*ncolors*sizeof(int));
 	if ( pool == NULL ) {
 		/* No worries, just return */;
 		return;
 	}
 	seen = pool;
-	SDL_memset(seen, 0, ncolors*sizeof(int));
+	memset(seen, 0, ncolors*sizeof(int));
 	order = pool+ncolors;
 
 	/* Start with the brightest color */
@@ -2261,7 +2205,6 @@ static void DX5_CompressPalette(_THIS, SDL_Color *colors, int ncolors, int maxco
 		SDL_colors[j].peGreen = colors[order[i]].g;
 		SDL_colors[j].peBlue = colors[order[i]].b;
 	}
-	SDL_stack_free(pool);
 #endif /* SIMPLE_COMPRESSION */
 }
 
@@ -2282,8 +2225,6 @@ int DX5_SetColors(_THIS, int firstcolor, int ncolors, SDL_Color *colors)
 				SDL_colors[j].peGreen = colors[i].g;
 				SDL_colors[j].peBlue = colors[i].b;
 			}
-			/* This sends an WM_PALETTECHANGED message to us */
-			colorchange_expected = 1;
 			IDirectDrawPalette_SetEntries(SDL_palette, 0,
 				firstcolor, ncolors, &SDL_colors[firstcolor]);
 			alloct_all = 1;
@@ -2332,9 +2273,9 @@ static int DX5_SetGammaRamp(_THIS, Uint16 *ramp)
 	}
 
 	/* Set up the gamma ramp */
-	SDL_memcpy(gamma_ramp.red, &ramp[0*256], 256*sizeof(*ramp));
-	SDL_memcpy(gamma_ramp.green, &ramp[1*256], 256*sizeof(*ramp));
-	SDL_memcpy(gamma_ramp.blue, &ramp[2*256], 256*sizeof(*ramp));
+	memcpy(gamma_ramp.red, &ramp[0*256], 256*sizeof(*ramp));
+	memcpy(gamma_ramp.green, &ramp[1*256], 256*sizeof(*ramp));
+	memcpy(gamma_ramp.blue, &ramp[2*256], 256*sizeof(*ramp));
 	result = IDirectDrawGammaControl_SetGammaRamp(gamma, 0, &gamma_ramp);
 	if ( result != DD_OK ) {
 		SetDDerror("DirectDrawGammaControl::SetGammaRamp()", result);
@@ -2380,9 +2321,9 @@ static int DX5_GetGammaRamp(_THIS, Uint16 *ramp)
 	/* Set up the gamma ramp */
 	result = IDirectDrawGammaControl_GetGammaRamp(gamma, 0, &gamma_ramp);
 	if ( result == DD_OK ) {
-		SDL_memcpy(&ramp[0*256], gamma_ramp.red, 256*sizeof(*ramp));
-		SDL_memcpy(&ramp[1*256], gamma_ramp.green, 256*sizeof(*ramp));
-		SDL_memcpy(&ramp[2*256], gamma_ramp.blue, 256*sizeof(*ramp));
+		memcpy(&ramp[0*256], gamma_ramp.red, 256*sizeof(*ramp));
+		memcpy(&ramp[1*256], gamma_ramp.green, 256*sizeof(*ramp));
+		memcpy(&ramp[2*256], gamma_ramp.blue, 256*sizeof(*ramp));
 	} else {
 		SetDDerror("DirectDrawGammaControl::GetGammaRamp()", result);
 	}
@@ -2391,6 +2332,16 @@ static int DX5_GetGammaRamp(_THIS, Uint16 *ramp)
 	IDirectDrawGammaControl_Release(gamma);
 	return (result == DD_OK) ? 0 : -1;
 #endif /* !IDirectDrawGammaControl_SetGammaRamp */
+}
+
+static void FlushMessageQueue()
+{
+	MSG  msg;
+	while ( PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) ) {
+		if ( msg.message == WM_QUIT ) break;
+		TranslateMessage( &msg );
+		DispatchMessage( &msg );
+	}
 }
 
 void DX5_VideoQuit(_THIS)
@@ -2426,8 +2377,8 @@ void DX5_VideoQuit(_THIS)
 	for ( i=0; i<NUM_MODELISTS; ++i ) {
 		if ( SDL_modelist[i] != NULL ) {
 			for ( j=0; SDL_modelist[i][j]; ++j )
-				SDL_free(SDL_modelist[i][j]);
-			SDL_free(SDL_modelist[i]);
+				free(SDL_modelist[i][j]);
+			free(SDL_modelist[i]);
 			SDL_modelist[i] = NULL;
 		}
 	}
@@ -2436,6 +2387,7 @@ void DX5_VideoQuit(_THIS)
 	DIB_QuitGamma(this);
 	if ( SDL_Window ) {
 		DX5_DestroyWindow(this);
+		FlushMessageQueue();
 	}
 
 	/* Free our window icon */
@@ -2446,9 +2398,6 @@ void DX5_VideoQuit(_THIS)
 }
 
 /* Exported for the windows message loop only */
-void DX5_Activate(_THIS, BOOL active, BOOL minimized)
-{
-}
 void DX5_RealizePalette(_THIS)
 {
 	if ( SDL_palette ) {
@@ -2497,13 +2446,13 @@ void DX5_PaletteChanged(_THIS, HWND window)
 	if ( palette == NULL ) { /* Sometimes we don't have a palette */
 		return;
 	}
-	entries = SDL_stack_alloc(PALETTEENTRY, palette->ncolors);
+	entries = (PALETTEENTRY *)alloca(palette->ncolors*sizeof(*entries));
 	hdc = GetDC(window);
 	GetSystemPaletteEntries(hdc, 0, palette->ncolors, entries);
 	ReleaseDC(window, hdc);
 	if ( ! colorchange_expected ) {
-		saved = SDL_stack_alloc(SDL_Color, palette->ncolors);
-		SDL_memcpy(saved, palette->colors, 
+		saved = (SDL_Color *)alloca(palette->ncolors*sizeof(SDL_Color));
+		memcpy(saved, palette->colors, 
 					palette->ncolors*sizeof(SDL_Color));
 	}
 	for ( i=0; i<palette->ncolors; ++i ) {
@@ -2511,17 +2460,15 @@ void DX5_PaletteChanged(_THIS, HWND window)
 		palette->colors[i].g = entries[i].peGreen;
 		palette->colors[i].b = entries[i].peBlue;
 	}
-	SDL_stack_free(entries);
 	if ( ! colorchange_expected ) {
 		Uint8 mapping[256];
 
-		SDL_memset(mapping, 0, sizeof(mapping));
+		memset(mapping, 0, sizeof(mapping));
 		for ( i=0; i<palette->ncolors; ++i ) {
 			mapping[i] = SDL_FindColor(palette,
 					saved[i].r, saved[i].g, saved[i].b);
 		}
 		DX5_Recolor8Bit(this, SDL_VideoSurface, mapping);
-		SDL_stack_free(saved);
 	}
 	colorchange_expected = 0;
 

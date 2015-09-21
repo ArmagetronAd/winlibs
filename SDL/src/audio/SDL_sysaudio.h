@@ -1,25 +1,29 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
-    This library is SDL_free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    This library is free software; you can redistribute it and/or
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 #ifndef _SDL_sysaudio_h
 #define _SDL_sysaudio_h
@@ -100,82 +104,73 @@ typedef struct AudioBootStrap {
 	SDL_AudioDevice *(*create)(int devindex);
 } AudioBootStrap;
 
-#if SDL_AUDIO_DRIVER_BSD
-extern AudioBootStrap BSD_AUDIO_bootstrap;
+#ifdef OPENBSD_AUDIO_SUPPORT
+extern AudioBootStrap OPENBSD_AUDIO_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_PULSE
-extern AudioBootStrap PULSE_bootstrap;
-#endif
-#if SDL_AUDIO_DRIVER_ALSA
-extern AudioBootStrap ALSA_bootstrap;
-#endif
-#if SDL_AUDIO_DRIVER_OSS
+#ifdef OSS_SUPPORT
 extern AudioBootStrap DSP_bootstrap;
 extern AudioBootStrap DMA_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_QNXNTO
+#ifdef ALSA_SUPPORT
+extern AudioBootStrap ALSA_bootstrap;
+#endif
+#ifdef QNXNTOAUDIO_SUPPORT
 extern AudioBootStrap QNXNTOAUDIO_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_SUNAUDIO
+#ifdef SUNAUDIO_SUPPORT
 extern AudioBootStrap SUNAUDIO_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_DMEDIA
+#ifdef DMEDIA_SUPPORT
 extern AudioBootStrap DMEDIA_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_ARTS
-extern AudioBootStrap ARTS_bootstrap;
+#ifdef ARTSC_SUPPORT
+extern AudioBootStrap ARTSC_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_ESD
+#ifdef ESD_SUPPORT
 extern AudioBootStrap ESD_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_NAS
+#ifdef NAS_SUPPORT
 extern AudioBootStrap NAS_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_DSOUND
+#ifdef ENABLE_DIRECTX
 extern AudioBootStrap DSOUND_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_WAVEOUT
+#ifdef ENABLE_WINDIB
 extern AudioBootStrap WAVEOUT_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_PAUD
+#ifdef _AIX
 extern AudioBootStrap Paud_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_BAUDIO
+#ifdef __BEOS__
 extern AudioBootStrap BAUDIO_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_COREAUDIO
+#ifdef MACOSX
 extern AudioBootStrap COREAUDIO_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_SNDMGR
+#if defined(macintosh) || TARGET_API_MAC_CARBON
 extern AudioBootStrap SNDMGR_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_MINT
+#ifdef ENABLE_AHI
+extern AudioBootStrap AHI_bootstrap;
+#endif
+#ifdef MINTAUDIO_SUPPORT
 extern AudioBootStrap MINTAUDIO_GSXB_bootstrap;
 extern AudioBootStrap MINTAUDIO_MCSN_bootstrap;
 extern AudioBootStrap MINTAUDIO_STFA_bootstrap;
 extern AudioBootStrap MINTAUDIO_XBIOS_bootstrap;
 extern AudioBootStrap MINTAUDIO_DMA8_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_DISK
+#ifdef DISKAUD_SUPPORT
 extern AudioBootStrap DISKAUD_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_DUMMY
-extern AudioBootStrap DUMMYAUD_bootstrap;
-#endif
-#if SDL_AUDIO_DRIVER_DC
+#ifdef ENABLE_DC
 extern AudioBootStrap DCAUD_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_NDS
-extern AudioBootStrap NDSAUD_bootstrap;
+#ifdef DRENDERER_SUPPORT
+extern AudioBootStrap DRENDERER_bootstrap;
 #endif
-#if SDL_AUDIO_DRIVER_MMEAUDIO
+#ifdef MMEAUDIO_SUPPORT
 extern AudioBootStrap MMEAUDIO_bootstrap;
-#endif
-#if SDL_AUDIO_DRIVER_DART
-extern AudioBootStrap DART_bootstrap;
-#endif
-#if SDL_AUDIO_DRIVER_EPOCAUDIO
-extern AudioBootStrap EPOCAudio_bootstrap; 
 #endif
 
 /* This is the current audio device */

@@ -1,33 +1,40 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 /* Functions for audio drivers to perform runtime conversion of audio format */
 
+#include <stdio.h>
+
+#include "SDL_error.h"
 #include "SDL_audio.h"
 
 
 /* Effectively mix right and left channels into a single channel */
-void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Sint32 sample;
@@ -44,7 +51,11 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 			dst = cvt->buf;
 			for ( i=cvt->len_cvt/2; i; --i ) {
 				sample = src[0] + src[1];
-				*dst = (Uint8)(sample / 2);
+				if ( sample > 255 ) {
+					*dst = 255;
+				} else {
+					*dst = sample;
+				}
 				src += 2;
 				dst += 1;
 			}
@@ -58,7 +69,14 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 			dst = (Sint8 *)cvt->buf;
 			for ( i=cvt->len_cvt/2; i; --i ) {
 				sample = src[0] + src[1];
-				*dst = (Sint8)(sample / 2);
+				if ( sample > 127 ) {
+					*dst = 127;
+				} else
+				if ( sample < -128 ) {
+					*dst = -128;
+				} else {
+					*dst = sample;
+				}
 				src += 2;
 				dst += 1;
 			}
@@ -74,10 +92,14 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Uint16)((src[0]<<8)|src[1])+
 					         (Uint16)((src[2]<<8)|src[3]);
-					sample /= 2;
-					dst[1] = (sample&0xFF);
-					sample >>= 8;
-					dst[0] = (sample&0xFF);
+					if ( sample > 65535 ) {
+						dst[0] = 0xFF;
+						dst[1] = 0xFF;
+					} else {
+						dst[1] = (sample&0xFF);
+						sample >>= 8;
+						dst[0] = (sample&0xFF);
+					}
 					src += 4;
 					dst += 2;
 				}
@@ -85,10 +107,14 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Uint16)((src[1]<<8)|src[0])+
 					         (Uint16)((src[3]<<8)|src[2]);
-					sample /= 2;
-					dst[0] = (sample&0xFF);
-					sample >>= 8;
-					dst[1] = (sample&0xFF);
+					if ( sample > 65535 ) {
+						dst[0] = 0xFF;
+						dst[1] = 0xFF;
+					} else {
+						dst[0] = (sample&0xFF);
+						sample >>= 8;
+						dst[1] = (sample&0xFF);
+					}
 					src += 4;
 					dst += 2;
 				}
@@ -105,10 +131,18 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Sint16)((src[0]<<8)|src[1])+
 					         (Sint16)((src[2]<<8)|src[3]);
-					sample /= 2;
-					dst[1] = (sample&0xFF);
-					sample >>= 8;
-					dst[0] = (sample&0xFF);
+					if ( sample > 32767 ) {
+						dst[0] = 0x7F;
+						dst[1] = 0xFF;
+					} else
+					if ( sample < -32768 ) {
+						dst[0] = 0x80;
+						dst[1] = 0x00;
+					} else {
+						dst[1] = (sample&0xFF);
+						sample >>= 8;
+						dst[0] = (sample&0xFF);
+					}
 					src += 4;
 					dst += 2;
 				}
@@ -116,10 +150,18 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 				for ( i=cvt->len_cvt/4; i; --i ) {
 					sample = (Sint16)((src[1]<<8)|src[0])+
 					         (Sint16)((src[3]<<8)|src[2]);
-					sample /= 2;
-					dst[0] = (sample&0xFF);
-					sample >>= 8;
-					dst[1] = (sample&0xFF);
+					if ( sample > 32767 ) {
+						dst[1] = 0x7F;
+						dst[0] = 0xFF;
+					} else
+					if ( sample < -32768 ) {
+						dst[1] = 0x80;
+						dst[0] = 0x00;
+					} else {
+						dst[0] = (sample&0xFF);
+						sample >>= 8;
+						dst[1] = (sample&0xFF);
+					}
 					src += 4;
 					dst += 2;
 				}
@@ -134,7 +176,7 @@ void SDLCALL SDL_ConvertMono(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Discard top 4 channels */
-void SDLCALL SDL_ConvertStrip(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertStrip(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Sint32 lsample, rsample;
@@ -150,8 +192,10 @@ void SDLCALL SDL_ConvertStrip(SDL_AudioCVT *cvt, Uint16 format)
 			src = cvt->buf;
 			dst = cvt->buf;
 			for ( i=cvt->len_cvt/6; i; --i ) {
-				dst[0] = src[0];
-				dst[1] = src[1];
+				lsample = src[0];
+				rsample = src[1];
+				dst[0] = lsample;
+				dst[1] = rsample;
 				src += 6;
 				dst += 2;
 			}
@@ -164,8 +208,10 @@ void SDLCALL SDL_ConvertStrip(SDL_AudioCVT *cvt, Uint16 format)
 			src = (Sint8 *)cvt->buf;
 			dst = (Sint8 *)cvt->buf;
 			for ( i=cvt->len_cvt/6; i; --i ) {
-				dst[0] = src[0];
-				dst[1] = src[1];
+				lsample = src[0];
+				rsample = src[1];
+				dst[0] = lsample;
+				dst[1] = rsample;
 				src += 6;
 				dst += 2;
 			}
@@ -250,7 +296,7 @@ void SDLCALL SDL_ConvertStrip(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Discard top 2 channels of 6 */
-void SDLCALL SDL_ConvertStrip_2(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertStrip_2(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Sint32 lsample, rsample;
@@ -266,8 +312,10 @@ void SDLCALL SDL_ConvertStrip_2(SDL_AudioCVT *cvt, Uint16 format)
 			src = cvt->buf;
 			dst = cvt->buf;
 			for ( i=cvt->len_cvt/4; i; --i ) {
-				dst[0] = src[0];
-				dst[1] = src[1];
+				lsample = src[0];
+				rsample = src[1];
+				dst[0] = lsample;
+				dst[1] = rsample;
 				src += 4;
 				dst += 2;
 			}
@@ -280,8 +328,10 @@ void SDLCALL SDL_ConvertStrip_2(SDL_AudioCVT *cvt, Uint16 format)
 			src = (Sint8 *)cvt->buf;
 			dst = (Sint8 *)cvt->buf;
 			for ( i=cvt->len_cvt/4; i; --i ) {
-				dst[0] = src[0];
-				dst[1] = src[1];
+				lsample = src[0];
+				rsample = src[1];
+				dst[0] = lsample;
+				dst[1] = rsample;
 				src += 4;
 				dst += 2;
 			}
@@ -365,7 +415,7 @@ void SDLCALL SDL_ConvertStrip_2(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Duplicate a mono channel to both stereo channels */
-void SDLCALL SDL_ConvertStereo(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertStereo(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 
@@ -403,7 +453,7 @@ void SDLCALL SDL_ConvertStereo(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Duplicate a stereo channel to a pseudo-5.1 stream */
-void SDLCALL SDL_ConvertSurround(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertSurround(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 
@@ -580,7 +630,7 @@ void SDLCALL SDL_ConvertSurround(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Duplicate a stereo channel to a pseudo-4.0 stream */
-void SDLCALL SDL_ConvertSurround_4(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertSurround_4(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 
@@ -733,7 +783,7 @@ void SDLCALL SDL_ConvertSurround_4(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Convert 8-bit to 16-bit - LSB */
-void SDLCALL SDL_Convert16LSB(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_Convert16LSB(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -756,7 +806,7 @@ void SDLCALL SDL_Convert16LSB(SDL_AudioCVT *cvt, Uint16 format)
 	}
 }
 /* Convert 8-bit to 16-bit - MSB */
-void SDLCALL SDL_Convert16MSB(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_Convert16MSB(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -780,7 +830,7 @@ void SDLCALL SDL_Convert16MSB(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Convert 16-bit to 8-bit */
-void SDLCALL SDL_Convert8(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_Convert8(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -806,7 +856,7 @@ void SDLCALL SDL_Convert8(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Toggle signed/unsigned */
-void SDLCALL SDL_ConvertSign(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertSign(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *data;
@@ -835,7 +885,7 @@ void SDLCALL SDL_ConvertSign(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Toggle endianness */
-void SDLCALL SDL_ConvertEndian(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_ConvertEndian(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *data, tmp;
@@ -857,7 +907,7 @@ void SDLCALL SDL_ConvertEndian(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Convert rate up by multiple of 2 */
-void SDLCALL SDL_RateMUL2(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateMUL2(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -895,7 +945,7 @@ void SDLCALL SDL_RateMUL2(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Convert rate up by multiple of 2, for stereo */
-void SDLCALL SDL_RateMUL2_c2(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateMUL2_c2(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -938,7 +988,7 @@ void SDLCALL SDL_RateMUL2_c2(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Convert rate up by multiple of 2, for quad */
-void SDLCALL SDL_RateMUL2_c4(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateMUL2_c4(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -994,7 +1044,7 @@ void SDLCALL SDL_RateMUL2_c4(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Convert rate up by multiple of 2, for 5.1 */
-void SDLCALL SDL_RateMUL2_c6(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateMUL2_c6(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -1061,7 +1111,7 @@ void SDLCALL SDL_RateMUL2_c6(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Convert rate down by multiple of 2 */
-void SDLCALL SDL_RateDIV2(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateDIV2(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -1096,7 +1146,7 @@ void SDLCALL SDL_RateDIV2(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Convert rate down by multiple of 2, for stereo */
-void SDLCALL SDL_RateDIV2_c2(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateDIV2_c2(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -1134,7 +1184,7 @@ void SDLCALL SDL_RateDIV2_c2(SDL_AudioCVT *cvt, Uint16 format)
 
 
 /* Convert rate down by multiple of 2, for quad */
-void SDLCALL SDL_RateDIV2_c4(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateDIV2_c4(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -1177,7 +1227,7 @@ void SDLCALL SDL_RateDIV2_c4(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Convert rate down by multiple of 2, for 5.1 */
-void SDLCALL SDL_RateDIV2_c6(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateDIV2_c6(SDL_AudioCVT *cvt, Uint16 format)
 {
 	int i;
 	Uint8 *src, *dst;
@@ -1226,7 +1276,7 @@ void SDLCALL SDL_RateDIV2_c6(SDL_AudioCVT *cvt, Uint16 format)
 }
 
 /* Very slow rate conversion routine */
-void SDLCALL SDL_RateSLOW(SDL_AudioCVT *cvt, Uint16 format)
+void SDL_RateSLOW(SDL_AudioCVT *cvt, Uint16 format)
 {
 	double ipos;
 	int i, clen;
@@ -1339,7 +1389,7 @@ int SDL_BuildAudioCVT(SDL_AudioCVT *cvt,
 
 	/* First filter:  Endian conversion from src to dst */
 	if ( (src_format & 0x1000) != (dst_format & 0x1000)
-	     && ((src_format & 0xff) == 16) && ((dst_format & 0xff) == 16)) {
+	     && ((src_format & 0xff) != 8) ) {
 		cvt->filters[cvt->filter_index++] = SDL_ConvertEndian;
 	}
 	
@@ -1439,7 +1489,7 @@ int SDL_BuildAudioCVT(SDL_AudioCVT *cvt,
 		Uint32 hi_rate, lo_rate;
 		int len_mult;
 		double len_ratio;
-		void (SDLCALL *rate_cvt)(SDL_AudioCVT *cvt, Uint16 format);
+		void (*rate_cvt)(SDL_AudioCVT *cvt, Uint16 format);
 
 		if ( src_rate > dst_rate ) {
 			hi_rate = src_rate;

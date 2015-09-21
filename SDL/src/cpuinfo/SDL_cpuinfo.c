@@ -1,36 +1,43 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 /* CPU feature detection for SDL */
+
+#ifdef unix /* FIXME: Better setjmp detection? */
+#define USE_SETJMP
+#include <signal.h>
+#include <setjmp.h>
+#endif
 
 #include "SDL.h"
 #include "SDL_cpuinfo.h"
 
-#if defined(__MACOSX__) && defined(__ppc__)
+#ifdef MACOSX
 #include <sys/sysctl.h> /* For AltiVec check */
-#elif SDL_ALTIVEC_BLITTERS && HAVE_SETJMP
-#include <signal.h>
-#include <setjmp.h>
 #endif
 
 #define CPU_HAS_RDTSC	0x00000001
@@ -42,7 +49,7 @@
 #define CPU_HAS_SSE2	0x00000080
 #define CPU_HAS_ALTIVEC	0x00000100
 
-#if SDL_ALTIVEC_BLITTERS && HAVE_SETJMP && !__MACOSX__
+#ifdef USE_SETJMP
 /* This is the brute force way of detecting instruction sets...
    the idea is borrowed from the libmpeg2 library - thanks!
  */
@@ -51,9 +58,9 @@ static void illegal_instruction(int sig)
 {
 	longjmp(jmpbuf, 1);
 }
-#endif /* HAVE_SETJMP */
+#endif // USE_SETJMP
 
-static __inline__ int CPU_haveCPUID(void)
+static __inline__ int CPU_haveCPUID()
 {
 	int has_CPUID = 0;
 #if defined(__GNUC__) && defined(i386)
@@ -94,7 +101,7 @@ CPUid by definition.  But it's nice to be able to prove it.  :)      */
 	:
 	: "%rax", "%rcx"
 	);
-#elif (defined(_MSC_VER) && defined(_M_IX86)) || defined(__WATCOMC__)
+#elif defined(_MSC_VER)
 	__asm {
         pushfd                      ; Get original EFLAGS
         pop     eax
@@ -109,44 +116,14 @@ CPUid by definition.  But it's nice to be able to prove it.  :)      */
         mov     has_CPUID,1         ; We have CPUID support
 done:
 	}
-#elif defined(__sun) && defined(__i386)
-	__asm (
-"       pushfl                 \n"
-"	popl    %eax           \n"
-"	movl    %eax,%ecx      \n"
-"	xorl    $0x200000,%eax \n"
-"	pushl   %eax           \n"
-"	popfl                  \n"
-"	pushfl                 \n"
-"	popl    %eax           \n"
-"	xorl    %ecx,%eax      \n"
-"	jz      1f             \n"
-"	movl    $1,-8(%ebp)    \n"
-"1:                            \n"
-	);
-#elif defined(__sun) && defined(__amd64)
-	__asm (
-"       pushfq                 \n"
-"       popq    %rax           \n"
-"       movq    %rax,%rcx      \n"
-"       xorl    $0x200000,%eax \n"
-"       pushq   %rax           \n"
-"       popfq                  \n"
-"       pushfq                 \n"
-"       popq    %rax           \n"
-"       xorl    %ecx,%eax      \n"
-"       jz      1f             \n"
-"       movl    $1,-8(%rbp)    \n"
-"1:                            \n"
-	);
 #endif
 	return has_CPUID;
 }
 
-static __inline__ int CPU_getCPUIDFeatures(void)
+static __inline__ int CPU_getCPUIDFeatures()
 {
 	int features = 0;
-#if defined(__GNUC__) && defined(i386)
+#if defined(__GNUC__) && ( defined(i386) || defined(__x86_64__) )
 	__asm__ (
 "        movl    %%ebx,%%edi\n"
 "        xorl    %%eax,%%eax         # Set up for CPUID instruction    \n"
@@ -163,24 +140,7 @@ static __inline__ int CPU_getCPUIDFeatures(void)
 	:
 	: "%eax", "%ecx", "%edx", "%edi"
 	);
-#elif defined(__GNUC__) && defined(__x86_64__)
-	__asm__ (
-"        movq    %%rbx,%%rdi\n"
-"        xorl    %%eax,%%eax         # Set up for CPUID instruction    \n"
-"        cpuid                       # Get and save vendor ID          \n"
-"        cmpl    $1,%%eax            # Make sure 1 is valid input for CPUID\n"
-"        jl      1f                  # We dont have the CPUID instruction\n"
-"        xorl    %%eax,%%eax                                           \n"
-"        incl    %%eax                                                 \n"
-"        cpuid                       # Get family/model/stepping/features\n"
-"        movl    %%edx,%0                                              \n"
-"1:                                                                    \n"
-"        movq    %%rdi,%%rbx\n"
-	: "=m" (features)
-	:
-	: "%rax", "%rbx", "%rcx", "%rdx", "%rdi"
-	);
-#elif (defined(_MSC_VER) && defined(_M_IX86)) || defined(__WATCOMC__)
+#elif defined(_MSC_VER)
 	__asm {
         xor     eax, eax            ; Set up for CPUID instruction
         cpuid                       ; Get and save vendor ID
@@ -192,31 +152,14 @@ static __inline__ int CPU_getCPUIDFeatures(void)
         mov     features, edx
 done:
 	}
-#elif defined(__sun) && (defined(__i386) || defined(__amd64))
-	    __asm(
-"        movl    %ebx,%edi\n"
-"        xorl    %eax,%eax         \n"
-"        cpuid                     \n"
-"        cmpl    $1,%eax           \n"
-"        jl      1f                \n"
-"        xorl    %eax,%eax         \n"
-"        incl    %eax              \n"
-"        cpuid                     \n"
-#ifdef __i386
-"        movl    %edx,-8(%ebp)     \n"
-#else
-"        movl    %edx,-8(%rbp)     \n"
-#endif
-"1:                                \n"
-"        movl    %edi,%ebx\n" );
 #endif
 	return features;
 }
 
-static __inline__ int CPU_getCPUIDFeaturesExt(void)
+static __inline__ int CPU_getCPUIDFeaturesExt()
 {
 	int features = 0;
-#if defined(__GNUC__) && defined(i386)
+#if defined(__GNUC__) && (defined(i386) || defined (__x86_64__) )
 	__asm__ (
 "        movl    %%ebx,%%edi\n"
 "        movl    $0x80000000,%%eax   # Query for extended functions    \n"
@@ -232,23 +175,7 @@ static __inline__ int CPU_getCPUIDFeaturesExt(void)
 	:
 	: "%eax", "%ecx", "%edx", "%edi"
 	);
-#elif defined(__GNUC__) && defined (__x86_64__)
-	__asm__ (
-"        movq    %%rbx,%%rdi\n"
-"        movl    $0x80000000,%%eax   # Query for extended functions    \n"
-"        cpuid                       # Get extended function limit     \n"
-"        cmpl    $0x80000001,%%eax                                     \n"
-"        jl      1f                  # Nope, we dont have function 800000001h\n"
-"        movl    $0x80000001,%%eax   # Setup extended function 800000001h\n"
-"        cpuid                       # and get the information         \n"
-"        movl    %%edx,%0                                              \n"
-"1:                                                                    \n"
-"        movq    %%rdi,%%rbx\n"
-	: "=m" (features)
-	:
-	: "%rax", "%rbx", "%rcx", "%rdx", "%rdi"
-	);
-#elif (defined(_MSC_VER) && defined(_M_IX86)) || defined(__WATCOMC__)
+#elif defined(_MSC_VER)
 	__asm {
         mov     eax,80000000h       ; Query for extended functions
         cpuid                       ; Get extended function limit
@@ -259,28 +186,11 @@ static __inline__ int CPU_getCPUIDFeaturesExt(void)
         mov     features,edx
 done:
 	}
-#elif defined(__sun) && ( defined(__i386) || defined(__amd64) )
-	    __asm (
-"        movl    %ebx,%edi\n"
-"        movl    $0x80000000,%eax \n"
-"        cpuid                    \n"
-"        cmpl    $0x80000001,%eax \n"
-"        jl      1f               \n"
-"        movl    $0x80000001,%eax \n"
-"        cpuid                    \n"
-#ifdef __i386
-"        movl    %edx,-8(%ebp)   \n"
-#else
-"        movl    %edx,-8(%rbp)   \n"
-#endif
-"1:                               \n"
-"        movl    %edi,%ebx\n"
-	    );
 #endif
 	return features;
 }
 
-static __inline__ int CPU_haveRDTSC(void)
+static __inline__ int CPU_haveRDTSC()
 {
 	if ( CPU_haveCPUID() ) {
 		return (CPU_getCPUIDFeatures() & 0x00000010);
@@ -288,7 +198,7 @@ static __inline__ int CPU_haveRDTSC(void)
 	return 0;
 }
 
-static __inline__ int CPU_haveMMX(void)
+static __inline__ int CPU_haveMMX()
 {
 	if ( CPU_haveCPUID() ) {
 		return (CPU_getCPUIDFeatures() & 0x00800000);
@@ -296,7 +206,7 @@ static __inline__ int CPU_haveMMX(void)
 	return 0;
 }
 
-static __inline__ int CPU_haveMMXExt(void)
+static __inline__ int CPU_haveMMXExt()
 {
 	if ( CPU_haveCPUID() ) {
 		return (CPU_getCPUIDFeaturesExt() & 0x00400000);
@@ -304,7 +214,7 @@ static __inline__ int CPU_haveMMXExt(void)
 	return 0;
 }
 
-static __inline__ int CPU_have3DNow(void)
+static __inline__ int CPU_have3DNow()
 {
 	if ( CPU_haveCPUID() ) {
 		return (CPU_getCPUIDFeaturesExt() & 0x80000000);
@@ -312,7 +222,7 @@ static __inline__ int CPU_have3DNow(void)
 	return 0;
 }
 
-static __inline__ int CPU_have3DNowExt(void)
+static __inline__ int CPU_have3DNowExt()
 {
 	if ( CPU_haveCPUID() ) {
 		return (CPU_getCPUIDFeaturesExt() & 0x40000000);
@@ -320,7 +230,7 @@ static __inline__ int CPU_have3DNowExt(void)
 	return 0;
 }
 
-static __inline__ int CPU_haveSSE(void)
+static __inline__ int CPU_haveSSE()
 {
 	if ( CPU_haveCPUID() ) {
 		return (CPU_getCPUIDFeatures() & 0x02000000);
@@ -328,7 +238,7 @@ static __inline__ int CPU_haveSSE(void)
 	return 0;
 }
 
-static __inline__ int CPU_haveSSE2(void)
+static __inline__ int CPU_haveSSE2()
 {
 	if ( CPU_haveCPUID() ) {
 		return (CPU_getCPUIDFeatures() & 0x04000000);
@@ -336,17 +246,17 @@ static __inline__ int CPU_haveSSE2(void)
 	return 0;
 }
 
-static __inline__ int CPU_haveAltiVec(void)
+static __inline__ int CPU_haveAltiVec()
 {
 	volatile int altivec = 0;
-#if defined(__MACOSX__) && defined(__ppc__)
+#ifdef MACOSX
 	int selectors[2] = { CTL_HW, HW_VECTORUNIT }; 
 	int hasVectorUnit = 0; 
 	size_t length = sizeof(hasVectorUnit); 
 	int error = sysctl(selectors, 2, &hasVectorUnit, &length, NULL, 0); 
 	if( 0 == error )
 		altivec = (hasVectorUnit != 0); 
-#elif SDL_ALTIVEC_BLITTERS && HAVE_SETJMP
+#elif defined(USE_SETJMP) && defined(GCC_ALTIVEC)
 	void (*handler)(int sig);
 	handler = signal(SIGILL, illegal_instruction);
 	if ( setjmp(jmpbuf) == 0 ) {
@@ -363,7 +273,7 @@ static __inline__ int CPU_haveAltiVec(void)
 
 static Uint32 SDL_CPUFeatures = 0xFFFFFFFF;
 
-static Uint32 SDL_GetCPUFeatures(void)
+static Uint32 SDL_GetCPUFeatures()
 {
 	if ( SDL_CPUFeatures == 0xFFFFFFFF ) {
 		SDL_CPUFeatures = 0;
@@ -395,7 +305,7 @@ static Uint32 SDL_GetCPUFeatures(void)
 	return SDL_CPUFeatures;
 }
 
-SDL_bool SDL_HasRDTSC(void)
+SDL_bool SDL_HasRDTSC()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_RDTSC ) {
 		return SDL_TRUE;
@@ -403,7 +313,7 @@ SDL_bool SDL_HasRDTSC(void)
 	return SDL_FALSE;
 }
 
-SDL_bool SDL_HasMMX(void)
+SDL_bool SDL_HasMMX()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_MMX ) {
 		return SDL_TRUE;
@@ -411,7 +321,7 @@ SDL_bool SDL_HasMMX(void)
 	return SDL_FALSE;
 }
 
-SDL_bool SDL_HasMMXExt(void)
+SDL_bool SDL_HasMMXExt()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_MMXEXT ) {
 		return SDL_TRUE;
@@ -419,7 +329,7 @@ SDL_bool SDL_HasMMXExt(void)
 	return SDL_FALSE;
 }
 
-SDL_bool SDL_Has3DNow(void)
+SDL_bool SDL_Has3DNow()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_3DNOW ) {
 		return SDL_TRUE;
@@ -427,7 +337,7 @@ SDL_bool SDL_Has3DNow(void)
 	return SDL_FALSE;
 }
 
-SDL_bool SDL_Has3DNowExt(void)
+SDL_bool SDL_Has3DNowExt()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_3DNOWEXT ) {
 		return SDL_TRUE;
@@ -435,7 +345,7 @@ SDL_bool SDL_Has3DNowExt(void)
 	return SDL_FALSE;
 }
 
-SDL_bool SDL_HasSSE(void)
+SDL_bool SDL_HasSSE()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_SSE ) {
 		return SDL_TRUE;
@@ -443,7 +353,7 @@ SDL_bool SDL_HasSSE(void)
 	return SDL_FALSE;
 }
 
-SDL_bool SDL_HasSSE2(void)
+SDL_bool SDL_HasSSE2()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_SSE2 ) {
 		return SDL_TRUE;
@@ -451,7 +361,7 @@ SDL_bool SDL_HasSSE2(void)
 	return SDL_FALSE;
 }
 
-SDL_bool SDL_HasAltiVec(void)
+SDL_bool SDL_HasAltiVec()
 {
 	if ( SDL_GetCPUFeatures() & CPU_HAS_ALTIVEC ) {
 		return SDL_TRUE;

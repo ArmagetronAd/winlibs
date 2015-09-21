@@ -1,31 +1,39 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2004 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
+    modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
+    version 2 of the License, or (at your option) any later version.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
+    Library General Public License for more details.
 
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    You should have received a copy of the GNU Library General Public
+    License along with this library; if not, write to the Free
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     Sam Lantinga
     slouken@libsdl.org
 */
-#include "SDL_config.h"
+
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
 
 /* This is the DirectDraw implementation of YUV video overlays */
 
+#include <stdlib.h>
+#include <string.h>
+
+#include "SDL_error.h"
 #include "SDL_video.h"
 #include "SDL_dx5yuv_c.h"
-#include "../SDL_yuvfuncs.h"
+#include "SDL_yuvfuncs.h"
 
 //#define USE_DIRECTX_OVERLAY
 
@@ -55,7 +63,7 @@ static LPDIRECTDRAWSURFACE3 CreateYUVSurface(_THIS,
 	DDSURFACEDESC ddsd;
 
 	/* Set up the surface description */
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	ddsd.dwFlags = (DDSD_WIDTH|DDSD_HEIGHT|DDSD_CAPS|DDSD_PIXELFORMAT);
 	ddsd.dwWidth = width;
@@ -84,7 +92,7 @@ static LPDIRECTDRAWSURFACE3 CreateYUVSurface(_THIS,
 	}
 
 	/* Make sure the surface format was set properly */
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	result = IDirectDrawSurface3_Lock(dd_surface3, NULL,
 					  &ddsd, DDLOCK_NOSYSLOCK, NULL);
@@ -132,13 +140,13 @@ SDL_Overlay *DX5_CreateYUVOverlay(_THIS, int width, int height, Uint32 format, S
 	IDirectDraw2_GetFourCCCodes(ddraw2, &numcodes, NULL);
 	if ( numcodes ) {
 		DWORD i;
-		codes = SDL_malloc(numcodes*sizeof(*codes));
+		codes = malloc(numcodes*sizeof(*codes));
 		if ( codes ) {
 			IDirectDraw2_GetFourCCCodes(ddraw2, &numcodes, codes);
 			for ( i=0; i<numcodes; ++i ) {
 				fprintf(stderr, "Code %d: 0x%x\n", i, PrintFOURCC(codes[i]));
 			}
-			SDL_free(codes);
+			free(codes);
 		}
 	} else {
 		fprintf(stderr, "No FOURCC codes supported\n");
@@ -146,12 +154,12 @@ SDL_Overlay *DX5_CreateYUVOverlay(_THIS, int width, int height, Uint32 format, S
 #endif
 
 	/* Create the overlay structure */
-	overlay = (SDL_Overlay *)SDL_malloc(sizeof *overlay);
+	overlay = (SDL_Overlay *)malloc(sizeof *overlay);
 	if ( overlay == NULL ) {
 		SDL_OutOfMemory();
 		return(NULL);
 	}
-	SDL_memset(overlay, 0, (sizeof *overlay));
+	memset(overlay, 0, (sizeof *overlay));
 
 	/* Fill in the basic members */
 	overlay->format = format;
@@ -162,7 +170,7 @@ SDL_Overlay *DX5_CreateYUVOverlay(_THIS, int width, int height, Uint32 format, S
 	overlay->hwfuncs = &dx5_yuvfuncs;
 
 	/* Create the pixel data and lookup tables */
-	hwdata = (struct private_yuvhwdata *)SDL_malloc(sizeof *hwdata);
+	hwdata = (struct private_yuvhwdata *)malloc(sizeof *hwdata);
 	overlay->hwdata = hwdata;
 	if ( hwdata == NULL ) {
 		SDL_OutOfMemory();
@@ -200,7 +208,7 @@ int DX5_LockYUVOverlay(_THIS, SDL_Overlay *overlay)
 	DDSURFACEDESC ddsd;
 
 	surface = overlay->hwdata->surface;
-	SDL_memset(&ddsd, 0, sizeof(ddsd));
+	memset(&ddsd, 0, sizeof(ddsd));
 	ddsd.dwSize = sizeof(ddsd);
 	result = IDirectDrawSurface3_Lock(surface, NULL,
 					  &ddsd, DDLOCK_NOSYSLOCK, NULL);
@@ -247,30 +255,30 @@ void DX5_UnlockYUVOverlay(_THIS, SDL_Overlay *overlay)
 	IDirectDrawSurface3_Unlock(surface, NULL);
 }
 
-int DX5_DisplayYUVOverlay(_THIS, SDL_Overlay *overlay, SDL_Rect *src, SDL_Rect *dst)
+int DX5_DisplayYUVOverlay(_THIS, SDL_Overlay *overlay, SDL_Rect *dstrect)
 {
 	HRESULT result;
 	LPDIRECTDRAWSURFACE3 surface;
-	RECT srcrect, dstrect;
+	RECT src, dst;
 
 	surface = overlay->hwdata->surface;
-	srcrect.top = src->y;
-	srcrect.bottom = srcrect.top+src->h;
-	srcrect.left = src->x;
-	srcrect.right = srcrect.left+src->w;
-	dstrect.top = SDL_bounds.top+dst->y;
-	dstrect.left = SDL_bounds.left+dst->x;
-	dstrect.bottom = dstrect.top+dst->h;
-	dstrect.right = dstrect.left+dst->w;
+	src.top = 0;
+	src.bottom = overlay->h;
+	src.left = 0;
+	src.right = overlay->w;
+	dst.top = SDL_bounds.top+dstrect->y;
+	dst.left = SDL_bounds.left+dstrect->x;
+	dst.bottom = dst.top+dstrect->h;
+	dst.right = dst.left+dstrect->w;
 #ifdef USE_DIRECTX_OVERLAY
-	result = IDirectDrawSurface3_UpdateOverlay(surface, &srcrect,
-				SDL_primary, &dstrect, DDOVER_SHOW, NULL);
+	result = IDirectDrawSurface3_UpdateOverlay(surface, &src,
+				SDL_primary, &dst, DDOVER_SHOW, NULL);
 	if ( result != DD_OK ) {
 		SetDDerror("DirectDrawSurface3::UpdateOverlay", result);
 		return(-1);
 	}
 #else
-	result = IDirectDrawSurface3_Blt(SDL_primary, &dstrect, surface, &srcrect,
+	result = IDirectDrawSurface3_Blt(SDL_primary, &dst, surface, &src,
 							DDBLT_WAIT, NULL);
 	if ( result != DD_OK ) {
 		SetDDerror("DirectDrawSurface3::Blt", result);
@@ -289,8 +297,7 @@ void DX5_FreeYUVOverlay(_THIS, SDL_Overlay *overlay)
 		if ( hwdata->surface ) {
 			IDirectDrawSurface_Release(hwdata->surface);
 		}
-		SDL_free(hwdata);
-		overlay->hwdata = NULL;
+		free(hwdata);
 	}
 }
 
