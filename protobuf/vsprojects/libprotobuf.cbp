@@ -15,13 +15,14 @@
 				<Option createDefFile="1" />
 				<Option projectResourceIncludeDirsRelation="2" />
 				<Compiler>
+					<Add option="-O2" />
+					<Add option="-g" />
 					<Add option="-DWIN32" />
 					<Add option="-D_DEBUG" />
 					<Add option="-D_WINDOWS" />
 					<Add option="-D_USRDLL" />
 					<Add option="-DLIBPROTOBUF_EXPORTS" />
 					<Add option="-W" />
-					<Add option="-O0" />
 					<Add directory="..\src" />
 					<Add directory="." />
 				</Compiler>
